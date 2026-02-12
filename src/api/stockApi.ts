@@ -32,5 +32,10 @@ export const stockApi = {
     searchStocks: async (query: string) => {
         const response = await axios.get(`${API_BASE_URL}/search`, { params: { q: query } });
         return response.data;
+    },
+    // Get All Stocks
+    getAllStocks: async () => {
+        const response = await axios.get(`${API_BASE_URL}/stocks`);
+        return response.data;
     }
 };

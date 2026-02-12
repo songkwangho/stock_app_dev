@@ -14,13 +14,15 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
-  RefreshCw
+  RefreshCw,
+  Layers
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { stockApi } from './api/stockApi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend
+  PieChart, Pie, Cell, LineChart, Line, Legend,
+  BarChart, Bar
 } from 'recharts';
 
 // --- Components ---
@@ -88,6 +90,8 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
 
   const [stockDetail, setStockDetail] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [addForm, setAddForm] = useState({ avgPrice: '0', weight: '5' });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -102,6 +106,13 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
     };
     fetchDetail();
   }, [stock.code]);
+
+  // Update addForm when stockDetail is loaded
+  useEffect(() => {
+    if (stockDetail?.price) {
+      setAddForm({ avgPrice: stockDetail.price.toString(), weight: '5' });
+    }
+  }, [stockDetail?.price]);
 
   if (loading) {
     return (
@@ -126,15 +137,12 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
   });
 
   const chartData = fullChartData.slice(-20);
-  const latest = chartData[chartData.length - 1];
-  const prev = chartData[chartData.length - 2];
+  const latest = chartData[chartData.length - 1] || { price: 0, sma5: null, sma20: null };
+  const prev = chartData[chartData.length - 2] || { price: 0 };
   const latestPrice = stockDetail?.price || (latest ? latest.price : 0);
 
   const trend = (latest && latest.sma5 !== null && latestPrice > latest.sma5) ? '상승' : '하락';
   const profitRate = isHolding && stock.avgPrice ? ((latestPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(2) : null;
-
-  const [addForm, setAddForm] = useState({ avgPrice: latestPrice.toString(), weight: '5' });
-  const [adding, setAdding] = useState(false);
 
   return (
     <div className="animate-in fade-in slide-in-from-left-4 duration-500 space-y-8">
@@ -238,6 +246,32 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
                 <p className="text-[10px] text-slate-500">최근 1주일 표준편차 기준</p>
               </div>
             </div>
+
+            {stockDetail?.investorData && stockDetail.investorData.length > 0 && (
+              <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
+                <h3 className="text-lg font-semibold mb-6 flex items-center justify-between">
+                  <span>투자자별 매매동향</span>
+                  <span className="text-[10px] text-slate-500 font-normal">최근 10거래일 순매수량</span>
+                </h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stockDetail.investorData.slice(-10).map((d: any) => ({
+                      ...d,
+                      name: d.date.slice(4, 6) + '/' + d.date.slice(6, 8)
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${v > 0 ? '+' : ''}${Math.round(v / 1000)}k`} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px' }} />
+                      <Bar dataKey="individual" name="개인" fill="#facc15" />
+                      <Bar dataKey="foreign" name="외국인" fill="#ec4899" />
+                      <Bar dataKey="institution" name="기관" fill="#6366f1" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -303,18 +337,20 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest">매수가 (₩)</p>
+                        <label className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest block font-bold">매수가 (₩)</label>
                         <input
                           type="number"
+                          title="매수가"
                           value={addForm.avgPrice}
                           onChange={(e) => setAddForm({ ...addForm, avgPrice: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                         />
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest">비중 (%)</p>
+                        <label className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest block font-bold">비중 (%)</label>
                         <input
                           type="number"
+                          title="비중"
                           value={addForm.weight}
                           onChange={(e) => setAddForm({ ...addForm, weight: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
@@ -477,6 +513,7 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: any) => {
                       setNewStock({ code: '', name: '', value: '', avgPrice: '' });
                     }
                   }}
+                  title="종목 추가"
                   className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-xl transition-colors"
                 >
                   <Plus size={20} />
@@ -534,7 +571,7 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: any) => {
             {portfolioData.map((item: any) => (
               <div key={item.name} className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                  <div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div>
                   <span className="text-sm text-slate-400">{item.name}</span>
                 </div>
                 <span className="text-sm font-medium">{item.value}%</span>
@@ -686,6 +723,77 @@ const RecommendationsPage = ({ onDetailClick }: any) => {
   );
 };
 
+const MajorStocksPage = ({ onDetailClick }: any) => {
+  const [stocks, setStocks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStocks = async () => {
+      try {
+        const data = await stockApi.getAllStocks();
+        setStocks(data);
+      } catch (error) {
+        console.error('Failed to fetch stocks:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStocks();
+  }, []);
+
+  const categories = Array.from(new Set(stocks.map(s => s.category)));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-500">
+        <RefreshCw className="animate-spin mr-2" size={20} />
+        <span>전체 종목 현황 로드 중...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-12 animate-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h2 className="text-2xl font-bold mb-2">주요 종목 현황</h2>
+        <p className="text-slate-500 text-sm">업종별 주요 종목의 실시간 시세와 추세를 한눈에 확인하세요.</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-8">
+        {categories.map(category => (
+          <div key={category} className="space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <span className="w-1.5 h-6 bg-blue-600 rounded-full"></span>
+              <span>{category || '기타'}</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {stocks.filter(s => s.category === category).map(stock => (
+                <div
+                  key={stock.code}
+                  onClick={() => onDetailClick(stock)}
+                  className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 hover:bg-slate-900 hover:border-blue-500/30 transition-all cursor-pointer group"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <p className="text-sm font-bold group-hover:text-blue-400 transition-colors">{stock.name}</p>
+                    <span className="text-[10px] text-slate-500 font-mono">{stock.code}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
+                    <div className="flex items-center space-x-1">
+                      <TrendingUp size={12} className="text-blue-400" />
+                      <span className="text-[10px] text-slate-400">상세보기</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SettingsPage = () => (
   <div className="max-w-2xl animate-in slide-in-from-bottom-4 duration-500">
     <h2 className="text-2xl font-bold mb-8">API & 계정 설정</h2>
@@ -720,7 +828,7 @@ const SettingsPage = () => (
           <Settings size={20} />
           <span className="text-sm">현재 버전: v1.0.0-alpha</span>
         </div>
-        <button className="text-blue-400 text-sm hover:underline">업데이트 확인</button>
+        <button title="업데이트 확인" className="text-blue-400 text-sm hover:underline">업데이트 확인</button>
       </div>
     </div>
   </div>
@@ -833,7 +941,8 @@ const App = () => {
         <nav className="flex-1 px-4 space-y-1.5">
           <NavButton active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setSelectedStock(null); }} icon={<LayoutDashboard size={20} />} label="대시보드" />
           <NavButton active={activeTab === 'analysis'} onClick={() => { setActiveTab('analysis'); setSelectedStock(null); }} icon={<TrendingUp size={20} />} label="보유 종목 분석" />
-          <NavButton active={activeTab === 'recommendations' || (activeTab === 'detail' && selectedStock?.category !== '보유 종목')} onClick={() => { setActiveTab('recommendations'); setSelectedStock(null); }} icon={<Star size={20} />} label="유망 종목 추천" />
+          <NavButton active={activeTab === 'recommendations' || (activeTab === 'detail' && selectedStock?.category !== '보유 종목' && selectedStock?.category !== '주요 종목')} onClick={() => { setActiveTab('recommendations'); setSelectedStock(null); }} icon={<Star size={20} />} label="유망 종목 추천" />
+          <NavButton active={activeTab === 'major'} onClick={() => { setActiveTab('major'); setSelectedStock(null); }} icon={<Layers size={20} />} label="주요 종목 현황" />
           <NavButton active={activeTab === 'settings'} onClick={() => { setActiveTab('settings'); setSelectedStock(null); }} icon={<Settings size={20} />} label="설정" />
         </nav>
 
@@ -890,7 +999,10 @@ const App = () => {
           </div>
 
           <div className="flex items-center space-x-5">
-            <button className="bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all relative">
+            <button
+              title="알림 확인"
+              className="bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all relative"
+            >
               <Bell size={20} className="text-slate-400" />
               <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950"></span>
             </button>
@@ -912,10 +1024,17 @@ const App = () => {
             {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onAdd={addHolding} onDelete={deleteHolding} onDetailClick={handleDetailClick} />}
             {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onDetailClick={handleDetailClick} />}
             {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleDetailClick} />}
+            {activeTab === 'major' && <MajorStocksPage onDetailClick={handleDetailClick} />}
             {activeTab === 'settings' && <SettingsPage />}
             {activeTab === 'detail' && selectedStock && <StockDetailView stock={selectedStock} onAdd={addHolding} onBack={() => {
               // Return to previous tab
-              setActiveTab(selectedStock.category === '보유 종목' ? 'analysis' : 'recommendations');
+              if (selectedStock.category === '보유 종목') {
+                setActiveTab('analysis');
+              } else if (activeTab === 'detail' && searchQuery === '') {
+                setActiveTab('recommendations');
+              } else {
+                setActiveTab('dashboard');
+              }
             }} />}
           </div>
         </main>

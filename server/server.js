@@ -203,6 +203,39 @@ async function getStockData(code, fallbackName = null) {
         });
         transaction(allMatches);
 
+        // Scraping investor data from frgn.naver
+        let investorData = [];
+        try {
+            const investorResponse = await axios.get(`https://finance.naver.com/item/frgn.naver?code=${code}`, {
+                responseType: 'arraybuffer',
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            const investorHtml = new TextDecoder('euc-kr').decode(investorResponse.data);
+
+            // Extract the last 20 rows of the investor table
+            // Table structure: Date, Close, Change, Rate, Volume, Institution Net, Foreign Net, ...
+            const investorRegex = /<tr.*?>\s*<td.*?><span.*?>([\d.]{10})<\/span><\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>/g;
+            let invMatch;
+            const matches = [];
+            while ((invMatch = investorRegex.exec(investorHtml)) !== null && matches.length < 20) {
+                const date = invMatch[1].replace(/\./g, '');
+                const instNet = parseInt(invMatch[4].replace(/,/g, ''));
+                const foreignNet = parseInt(invMatch[5].replace(/,/g, ''));
+                const volume = parseInt(invMatch[3].replace(/,/g, ''));
+                // Estimate Individual as a portion of non-inst/non-foreign volume for UI purposes, or leave as 0
+                // Actually, let's just stick to what we accurately scrape.
+                matches.push({
+                    date,
+                    institution: instNet,
+                    foreign: foreignNet,
+                    individual: -(instNet + foreignNet) // This is a common heuristic: Net buy sum is approx zero excluding 'Others'
+                });
+            }
+            investorData = matches.reverse();
+        } catch (investorError) {
+            console.error(`Investor Scraping Error for ${code}:`, investorError.message);
+        }
+
         // Scraping additional metrics from main page
         let per = null, pbr = null, roe = null, targetPrice = null;
         let html = '';
@@ -248,6 +281,8 @@ async function getStockData(code, fallbackName = null) {
         const latestMatch = allMatches[allMatches.length - 1];
         const latestPrice = parseInt(latestMatch[5]);
 
+        const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
+
         const existing = db.prepare('SELECT name FROM stocks WHERE code = ?').get(code);
         let nameToSave = code;
         if (fallbackName) {
@@ -272,14 +307,12 @@ async function getStockData(code, fallbackName = null) {
                 last_updated = CURRENT_TIMESTAMP
         `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice);
 
-        const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
-
-        return { code, name: nameToSave, price: latestPrice, change: "0", change_rate: "0.00", per, pbr, roe, targetPrice, history: history.reverse() };
+        return { code, name: nameToSave, price: latestPrice, change: "0", change_rate: "0.00", per, pbr, roe, targetPrice, history: history.reverse(), investorData };
     } catch (error) {
         console.error(`API Error for ${code}:`, error.message);
         const stock = db.prepare('SELECT * FROM stocks WHERE code = ?').get(code);
         const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
-        return stock ? { ...stock, history: history.reverse() } : null;
+        return stock ? { ...stock, history: history.reverse(), investorData: [] } : null;
     }
 }
 
@@ -345,6 +378,17 @@ app.delete('/api/holdings/:code', (req, res) => {
     } catch (error) {
         console.error('Holdings DELETE Error:', error.message);
         res.status(500).json({ error: 'Failed to delete holding' });
+    }
+});
+
+// Get All Stocks
+app.get('/api/stocks', (req, res) => {
+    try {
+        const stocks = db.prepare('SELECT * FROM stocks ORDER BY category, name').all();
+        res.json(stocks);
+    } catch (error) {
+        console.error('Stocks GET Error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch stocks' });
     }
 });
 
