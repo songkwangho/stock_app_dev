@@ -54,9 +54,18 @@ const RecommendedStockCard = ({ stock, onDetailClick }: any) => (
         </div>
         <p className="text-xs text-slate-500 font-mono tracking-wider">{stock.code}</p>
       </div>
-      <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2 py-1 rounded-lg text-xs font-bold">
-        <Zap size={12} />
-        <span>{stock.score}점</span>
+      <div className="flex flex-col items-end space-y-2">
+        <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2 py-1 rounded-lg text-xs font-bold">
+          <Zap size={12} />
+          <span>{stock.score}점</span>
+        </div>
+        {stock.opinion && (
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stock.opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+            stock.opinion === '부정적' ? 'bg-red-500/10 text-red-500' : 'bg-slate-500/10 text-slate-400'
+            }`}>
+            {stock.opinion}
+          </span>
+        )}
       </div>
     </div>
     <p className="text-sm text-slate-400 mb-6 leading-relaxed">
@@ -68,7 +77,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: any) => (
         <p className="text-sm font-bold text-white">₩{(stock.currentPrice !== undefined && stock.currentPrice !== null) ? stock.currentPrice.toLocaleString() : '---'}</p>
       </div>
       <div>
-        <p className="text-[10px] text-slate-500 uppercase tracking-widest">매수 적정가</p>
+        <p className="text-[10px] text-slate-500 uppercase tracking-widest">AI 추천 적정가</p>
         <p className="text-sm font-bold text-emerald-400">₩{stock.fairPrice?.toLocaleString()}</p>
       </div>
       <button
@@ -180,6 +189,28 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
               <h3 className="text-lg font-semibold mb-6 flex items-center justify-between">
+                <span>토스증권 실시간 차트 캡처</span>
+                <span className="text-[10px] text-slate-500 font-normal">Toss Securities Original Chart</span>
+              </h3>
+              {stockDetail?.chartPath ? (
+                <div className="w-full rounded-xl overflow-hidden border border-slate-800 mb-6">
+                  <img
+                    src={`http://localhost:3001${stockDetail.chartPath}`}
+                    alt="Toss Chart"
+                    className="w-full h-auto object-cover"
+                    onError={(e: any) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-48 bg-slate-900/50 rounded-xl flex flex-col items-center justify-center border border-dashed border-slate-800 mb-6 text-slate-600">
+                  <RefreshCw className="animate-spin mb-2" size={24} />
+                  <p className="text-xs">차트 이미지를 캡처 중입니다...</p>
+                </div>
+              )}
+
+              <h3 className="text-lg font-semibold mb-6 flex items-center justify-between">
                 <span>통계적 추세 분석 (SMA5/SMA20)</span>
                 <span className="text-[10px] text-slate-500 font-normal">최근 20거래일 기준</span>
               </h3>
@@ -216,9 +247,9 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
                 <p className="text-[10px] text-slate-600 mt-1">자기자본이익률</p>
               </div>
               <div className="p-6 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">적정주가 (컨센서스)</h4>
+                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">증권사 목표가 (컨센서스)</h4>
                 <p className="text-xl font-bold text-emerald-400">{stockDetail?.targetPrice ? `₩${stockDetail.targetPrice.toLocaleString()}` : '---'}</p>
-                <p className="text-[10px] text-slate-600 mt-1">증권사 평균 목표가</p>
+                <p className="text-[10px] text-slate-600 mt-1">시장 평균 분석가 목표주가</p>
               </div>
             </div>
 
@@ -229,7 +260,19 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
                   <li className="flex justify-between">
                     <span>이동평균선 정배열</span>
                     <span className={latest.sma5 !== null && latest.sma20 !== null && latest.sma5 > latest.sma20 ? 'text-emerald-500' : 'text-slate-600'}>
-                      {latest.sma5 !== null && latest.sma20 !== null && latest.sma5 > latest.sma20 ? '확인됨' : '미달'}
+                      {latest.sma5 !== null && latest.sma20 !== null && latest.sma5 > latest.sma20 ? '정배열(Bullish)' : '역배열/혼조'}
+                    </span>
+                  </li>
+                  <li className="flex justify-between">
+                    <span>주가 위치 (5일선 대비)</span>
+                    <span className={latestPrice > (latest.sma5 || 0) ? 'text-emerald-500' : 'text-red-500'}>
+                      {latestPrice > (latest.sma5 || 0) ? '상회' : '하회'}
+                    </span>
+                  </li>
+                  <li className="flex justify-between">
+                    <span>이격도 (5일선)</span>
+                    <span className={latest.sma5 ? (Math.abs((latestPrice - latest.sma5) / latest.sma5 * 100) > 5 ? 'text-red-400' : 'text-emerald-400') : 'text-slate-600'}>
+                      {latest.sma5 ? `${Math.abs((latestPrice - latest.sma5) / latest.sma5 * 100).toFixed(1)}%` : '---'}
                     </span>
                   </li>
                   <li className="flex justify-between">
@@ -282,45 +325,66 @@ const StockDetailView = ({ stock, onBack, onAdd }: any) => {
               </h3>
 
               <div className="space-y-6 text-sm text-slate-300 leading-relaxed mb-6">
-                {isHolding ? (
-                  <p>{`현재 보유하신 ${stock.name}은(는) 통계적으로 ${trend} 추세를 보이고 있습니다. ${latest.sma5 !== null && latest.sma20 !== null && latest.sma5 > latest.sma20 ? '단기 이평선이 장기 이평선을 상회하는 골든크로스 구간으로 추가 상승 여력이 존재합니다.' : '이평선이 수렴하며 방향성을 탐색하는 구간입니다. 신중한 접근이 필요합니다.'}`}</p>
-                ) : (
-                  <>
-                    <p className="font-bold text-blue-300/80">AI 분석 리포트:</p>
-                    <ul className="list-disc list-inside space-y-2 text-slate-400 marker:text-blue-500">
-                      {stockDetail?.detailedAnalysis?.map((point: string, idx: number) => (
-                        <li key={idx} className="pl-2 -indent-5">{point}</li>
-                      )) || (
-                          <li>{stock.name}에 대한 AI 분석 결과, 시장 전체 수급 흐름과 기술적 지표가 우호적인 환경을 조성하고 있습니다.</li>
-                        )}
-                    </ul>
+                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-4">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-bold">종합 의견</p>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-lg font-black px-3 py-1 rounded-lg ${stockDetail?.opinion === '긍정적' || stockDetail?.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
+                      stockDetail?.opinion === '부정적' || stockDetail?.opinion === '매도' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-400'
+                      }`}>
+                      {stockDetail?.opinion || '분석 중'}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {isHolding ? '보유 종목 대응 전략' : '신규 투자 유망도'}
+                    </span>
+                  </div>
+                </div>
 
-                    {stockDetail?.probabilityFormula && (
-                      <div className="mt-8 pt-6 border-t border-blue-500/20">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-[10px] text-blue-400 uppercase tracking-widest font-bold">상승예측확률 산출식</p>
-                          <div className="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-bold">Predicted P: {stockDetail.probability}%</div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-bold text-blue-300/80 mb-2 flex items-center space-x-2">
+                      <ShieldCheck size={16} className="text-blue-500" />
+                      <span>상세 분석:</span>
+                    </p>
+                    <p className="text-slate-400 pl-6 leading-relaxed">
+                      {stockDetail?.analysis || `${stock.name}에 대한 시장 데이터와 기술적 지표를 종합적으로 분석하고 있습니다.`}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="font-bold text-blue-300/80 mb-2 flex items-center space-x-2">
+                      <Zap size={16} className="text-blue-500" />
+                      <span>투자 조언:</span>
+                    </p>
+                    <p className="text-slate-400 pl-6 leading-relaxed">
+                      {stockDetail?.advice || '현재 시점에서는 시장 변동성을 고려한 신중한 접근이 필요합니다.'}
+                    </p>
+                  </div>
+                </div>
+
+                {stockDetail?.tossUrl && (
+                  <div className="mt-6 pt-6 border-t border-slate-800">
+                    <a
+                      href={stockDetail.tossUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl transition-all group"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">T</div>
+                        <div>
+                          <p className="text-xs font-bold text-white">토스증권 차트 보기</p>
+                          <p className="text-[10px] text-slate-500">실시간 차트와 커뮤니티 반응 확인</p>
                         </div>
-                        <div className="bg-slate-950/50 p-4 rounded-xl border border-blue-500/10 font-mono text-[11px] text-blue-300/70 overflow-x-auto">
-                          {stockDetail.probabilityFormula}
-                        </div>
-                        <p className="mt-2 text-[9px] text-slate-500">* V:거래량변동, SMA:이평선정배열, RSI:강세지표, EV:시장점유율 등 반영</p>
                       </div>
-                    )}
-
-                    <div className="mt-6 pt-6 border-t border-blue-500/20">
-                      <p className="text-[10px] text-blue-400 uppercase tracking-widest mb-1 font-bold">매수 적정가 판단 근거</p>
-                      <p className="text-xs text-blue-300 leading-relaxed italic">
-                        "{stock.fairPriceReason || '현재 수급 상황과 산업 펀더멘털을 고려할 때 매력적인 가격대입니다.'}"
-                      </p>
-                    </div>
-                  </>
+                      <ArrowUpRight size={16} className="text-slate-500 group-hover:text-blue-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                    </a>
+                  </div>
                 )}
               </div>
               {!isHolding && stock.fairPrice && (
                 <div className="flex justify-between items-center p-4 bg-emerald-500/10 rounded-xl border border-emerald-500/20 mb-6 group">
                   <div>
-                    <p className="text-[10px] text-emerald-500 uppercase tracking-widest mb-0.5">추천 매수 적정가</p>
+                    <p className="text-[10px] text-emerald-500 uppercase tracking-widest mb-0.5">AI 추천 매수 적정가</p>
                     <p className="text-xl font-black text-white">₩{stock.fairPrice.toLocaleString()}</p>
                   </div>
                   <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400">
@@ -741,7 +805,16 @@ const MajorStocksPage = ({ onDetailClick }: any) => {
     fetchStocks();
   }, []);
 
-  const categories = Array.from(new Set(stocks.map(s => s.category)));
+  const CATEGORY_ORDER = [
+    '기술/IT',
+    '바이오/헬스케어',
+    '자동차/모빌리티',
+    '에너지/소재',
+    '금융/지주',
+    '소비재/서비스',
+    '엔터테인먼트/미디어',
+    '조선/기계/방산'
+  ];
 
   if (loading) {
     return (
@@ -759,36 +832,45 @@ const MajorStocksPage = ({ onDetailClick }: any) => {
         <p className="text-slate-500 text-sm">업종별 주요 종목의 실시간 시세와 추세를 한눈에 확인하세요.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
-        {categories.map(category => (
-          <div key={category} className="space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
-              <span className="w-1.5 h-6 bg-blue-600 rounded-full"></span>
-              <span>{category || '기타'}</span>
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {stocks.filter(s => s.category === category).map(stock => (
-                <div
-                  key={stock.code}
-                  onClick={() => onDetailClick(stock)}
-                  className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 hover:bg-slate-900 hover:border-blue-500/30 transition-all cursor-pointer group"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="text-sm font-bold group-hover:text-blue-400 transition-colors">{stock.name}</p>
-                    <span className="text-[10px] text-slate-500 font-mono">{stock.code}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
-                    <div className="flex items-center space-x-1">
-                      <TrendingUp size={12} className="text-blue-400" />
-                      <span className="text-[10px] text-slate-400">상세보기</span>
+      <div className="grid grid-cols-1 gap-12">
+        {CATEGORY_ORDER.map(category => {
+          const categoryStocks = stocks.filter(s => s.category === category);
+          if (categoryStocks.length === 0) return null;
+
+          return (
+            <div key={category} className="space-y-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <span className="w-1.5 h-6 bg-blue-600 rounded-full"></span>
+                <span>{category}</span>
+                <span className="text-xs font-normal text-slate-500 ml-2">({categoryStocks.length}종목)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {categoryStocks.map(stock => (
+                  <div
+                    key={stock.code}
+                    onClick={() => onDetailClick(stock)}
+                    className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 hover:bg-slate-900 hover:border-blue-500/30 transition-all cursor-pointer group"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-bold group-hover:text-blue-400 transition-colors">{stock.name}</p>
+                      <span className="text-[10px] text-slate-500 font-mono">{stock.code}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${stock.opinion === '긍정적' || stock.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
+                          stock.opinion === '부정적' || stock.opinion === '매도' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-400'
+                          }`}>
+                          {stock.opinion || '중립적'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
