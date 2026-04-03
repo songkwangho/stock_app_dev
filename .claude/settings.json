@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"
+    ]
+  }
+}

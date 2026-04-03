@@ -18,6 +18,22 @@ app.use(cors());
 app.use(express.json());
 app.use('/charts', express.static(path.join(__dirname, '..', 'public', 'charts')));
 
+// --- In-memory cache with TTL ---
+const stockCache = new Map(); // code -> { data, timestamp }
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function getCached(code) {
+    const entry = stockCache.get(code);
+    if (entry && (Date.now() - entry.timestamp) < CACHE_TTL) {
+        return entry.data;
+    }
+    return null;
+}
+
+function setCache(code, data) {
+    stockCache.set(code, { data, timestamp: Date.now() });
+}
+
 // SQLite Database Setup
 const dbPath = path.resolve(__dirname, '..', 'stocks.db');
 const db = new Database(dbPath);
@@ -82,6 +98,10 @@ db.prepare(`
     FOREIGN KEY (code) REFERENCES stocks (code)
   )
 `).run();
+
+// Database Indices for query performance
+db.prepare('CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date)').run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_stocks_category ON stocks(category)').run();
 
 // Migration: Handle structural changes
 try {
@@ -208,14 +228,17 @@ const populateRecs = db.transaction((recs) => {
 populateRecs(initialRecommendations);
 
 // Function to sync prices for major stocks (initial recommendations)
+// Uses batched parallelism (5 concurrent) to avoid rate limiting
 async function syncMajorStocks() {
     console.log('Syncing major stocks prices...');
-    for (const r of initialRecommendations) {
-        try {
-            await getStockData(r.code, r.name);
-        } catch (e) {
-            console.error(`Failed to sync ${r.name}:`, e.message);
-        }
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < initialRecommendations.length; i += BATCH_SIZE) {
+        const batch = initialRecommendations.slice(i, i + BATCH_SIZE);
+        await Promise.allSettled(
+            batch.map(r => getStockData(r.code, r.name).catch(e =>
+                console.error(`Failed to sync ${r.name}:`, e.message)
+            ))
+        );
     }
     console.log('Major stocks sync complete.');
 }
@@ -223,12 +246,37 @@ async function syncMajorStocks() {
 // Naver Finance API URL
 const NAVER_FINANCE_URL = 'https://api.finance.naver.com/siseJson.naver';
 
+const CATEGORY_MAP = {
+    '기술/IT': ['반도체', '디스플레이', 'IT', '하드웨어', '통신장비', '전자제품', '컴퓨터', '핸드셋', '소프트웨어', '네트워크장비'],
+    '바이오/헬스케어': ['제약', '생물공학', '의료기기', '건강관리', '바이오'],
+    '자동차/모빌리티': ['자동차', '부품', '타이어'],
+    '에너지/소재': ['전기제품', '화학', '철강', '비철금속', '에너지장비', '석유', '가스', '2차전지', '배터리'],
+    '금융/지주': ['은행', '증권', '보험', '지주사', '금융'],
+    '소비재/서비스': ['식품', '화장품', '소매', '백화점', '섬유', '의류', '의복', '생활용품', '악기', '레저', '가구', '유통', '음식료'],
+    '엔터테인먼트/미디어': ['게임', '양방향미디어', '방송', '광고', '영화', '콘텐츠', '기획사', '포털'],
+    '조선/기계/방산': ['조선', '기계', '항공우주', '건설', '방산', '방위산업']
+};
+
+function mapToCategory(industry) {
+    if (!industry) return '기타/미분류';
+    for (const [cat, keywords] of Object.entries(CATEGORY_MAP)) {
+        if (keywords.some(kw => industry.includes(kw))) {
+            return cat;
+        }
+    }
+    return '소비재/서비스'; // Default
+}
+
 // Run sync on start and every 1 hour
 syncMajorStocks();
 setInterval(syncMajorStocks, 60 * 60 * 1000);
 
-// Helper function to fetch and store stock data
+// Helper function to fetch and store stock data (with cache)
 async function getStockData(code, fallbackName = null) {
+    // Check cache first
+    const cached = getCached(code);
+    if (cached) return cached;
+
     try {
         // Fetch last 60 days to ensure we have enough for 40 business days
         const sixtyDaysAgo = new Date();
@@ -236,40 +284,45 @@ async function getStockData(code, fallbackName = null) {
         const startTime = sixtyDaysAgo.toISOString().slice(0, 10).replace(/-/g, '');
         const endTime = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-        const response = await axios.get(NAVER_FINANCE_URL, {
-            params: {
-                symbol: code,
-                requestType: 1,
-                startTime: startTime,
-                endTime: endTime,
-                timeframe: 'day'
-            },
-            headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Referer': 'https://finance.naver.com/'
-            }
-        });
+        // Parallel fetch: price history + investor data + main page metrics
+        const [response, investorResult, mainPageResult] = await Promise.allSettled([
+            axios.get(NAVER_FINANCE_URL, {
+                params: { symbol: code, requestType: 1, startTime, endTime, timeframe: 'day' },
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.naver.com/' }
+            }),
+            axios.get(`https://finance.naver.com/item/frgn.naver?code=${code}`, {
+                responseType: 'arraybuffer',
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            }),
+            axios.get(`https://finance.naver.com/item/main.naver?code=${code}`, {
+                responseType: 'arraybuffer',
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            })
+        ]);
 
-        const rawData = response.data.trim();
-        const cleanedData = rawData.replace(/\s+/g, '');
-        console.log('Raw Data Length:', rawData.length);
-        const allMatches = [...cleanedData.matchAll(/\["(\d+)","?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?([\d.]+)"?\]/g)];
-        console.log('Matches Count:', allMatches.length);
+        // --- Process price history ---
+        const priceResponse = response.status === 'fulfilled' ? response.value : null;
+        let allMatches = [];
+        if (priceResponse) {
+            const rawData = priceResponse.data.trim();
+            const cleanedData = rawData.replace(/\s+/g, '');
+            allMatches = [...cleanedData.matchAll(/\["(\d+)","?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?(\d+)"?,"?([\d.]+)"?\]/g)];
+        }
 
         if (allMatches.length === 0) {
             const stock = db.prepare('SELECT * FROM stocks WHERE code = ?').get(code);
             const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
-            return stock ? { ...stock, history: history.reverse() } : null;
+            const result = stock ? { ...stock, history: history.reverse() } : null;
+            if (result) setCache(code, result);
+            return result;
         }
 
-        // Save History
+        // Save History in transaction
         const insertHistory = db.prepare(`
             INSERT INTO stock_history (code, date, price)
             VALUES (?, ?, ?)
             ON CONFLICT(code, date) DO UPDATE SET price = excluded.price
         `);
-
-        // Use a transaction for better performance
         const transaction = db.transaction((matches) => {
             for (const match of matches) {
                 insertHistory.run(code, match[1], parseInt(match[5]));
@@ -277,64 +330,71 @@ async function getStockData(code, fallbackName = null) {
         });
         transaction(allMatches);
 
-        // Scraping investor data from frgn.naver
+        // --- Process investor data ---
         let investorData = [];
-        try {
-            const investorResponse = await axios.get(`https://finance.naver.com/item/frgn.naver?code=${code}`, {
-                responseType: 'arraybuffer',
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            const investorHtml = new TextDecoder('euc-kr').decode(investorResponse.data);
-
-            // Extract the last 20 rows of the investor table
-            // Table structure: Date, Close, Change, Rate, Volume, Institution Net, Foreign Net, ...
-            const investorRegex = /<tr.*?>\s*<td.*?><span.*?>([\d.]{10})<\/span><\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>/g;
-            let invMatch;
-            const matches = [];
-            while ((invMatch = investorRegex.exec(investorHtml)) !== null && matches.length < 20) {
-                const date = invMatch[1].replace(/\./g, '');
-                const instNet = parseInt(invMatch[4].replace(/,/g, ''));
-                const foreignNet = parseInt(invMatch[5].replace(/,/g, ''));
-                const volume = parseInt(invMatch[3].replace(/,/g, ''));
-                // Estimate Individual as a portion of non-inst/non-foreign volume for UI purposes, or leave as 0
-                // Actually, let's just stick to what we accurately scrape.
-                matches.push({
-                    date,
-                    institution: instNet,
-                    foreign: foreignNet,
-                    individual: -(instNet + foreignNet) // This is a common heuristic: Net buy sum is approx zero excluding 'Others'
-                });
+        if (investorResult.status === 'fulfilled') {
+            try {
+                const investorHtml = new TextDecoder('euc-kr').decode(investorResult.value.data);
+                const investorRegex = /<tr.*?>\s*<td.*?><span.*?>([\d.]{10})<\/span><\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?>[\s\S]*?<\/td>\s*<td.*?><span.*?>([\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>\s*<td.*?><span.*?>([+-]?[\d,]+)<\/span><\/td>/g;
+                let invMatch;
+                const matches = [];
+                while ((invMatch = investorRegex.exec(investorHtml)) !== null && matches.length < 20) {
+                    const date = invMatch[1].replace(/\./g, '');
+                    const instNet = parseInt(invMatch[4].replace(/,/g, ''));
+                    const foreignNet = parseInt(invMatch[5].replace(/,/g, ''));
+                    matches.push({
+                        date,
+                        institution: instNet,
+                        foreign: foreignNet,
+                        individual: -(instNet + foreignNet)
+                    });
+                }
+                investorData = matches.reverse();
+            } catch (investorError) {
+                console.error(`Investor Parse Error for ${code}:`, investorError.message);
             }
-            investorData = matches.reverse();
-        } catch (investorError) {
-            console.error(`Investor Scraping Error for ${code}:`, investorError.message);
         }
 
-        // Scraping additional metrics from main page
+        // --- Process main page metrics ---
         let per = null, pbr = null, roe = null, targetPrice = null;
         let html = '';
-        try {
-            const pageResponse = await axios.get(`https://finance.naver.com/item/main.naver?code=${code}`, {
-                responseType: 'arraybuffer',
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            html = new TextDecoder('euc-kr').decode(pageResponse.data);
+        if (mainPageResult.status === 'fulfilled') {
+            try {
+                const buffer = mainPageResult.value.data;
+                const tempStr = buffer.toString('ascii');
+                let charset = 'euc-kr';
 
-            const perMatch = html.match(/<em id="_per">([\d.]+)<\/em>/);
-            const pbrMatch = html.match(/<em id="_pbr">([\d.]+)<\/em>/);
-            const tpMatch = html.match(/class="rwidth"[\s\S]*?<span class="bar">l<\/span>[\s\S]*?<em>([\d,]+)<\/em>/);
+                const metaMatch = tempStr.match(/<meta.*?charset=["']?([\w-]+)["']?/i);
+                if (metaMatch) {
+                    charset = metaMatch[1].toLowerCase();
+                } else {
+                    const contentType = mainPageResult.value.headers['content-type'];
+                    if (contentType && contentType.includes('charset=')) {
+                        charset = contentType.split('charset=')[1].trim().toLowerCase();
+                    }
+                }
 
-            per = perMatch ? parseFloat(perMatch[1]) : null;
-            pbr = pbrMatch ? parseFloat(pbrMatch[1]) : null;
-            targetPrice = tpMatch ? parseInt(tpMatch[1].replace(/,/g, '')) : null;
+                html = new TextDecoder(charset).decode(buffer);
+                if (html.includes('')) {
+                    html = new TextDecoder('utf-8').decode(buffer);
+                }
 
-            const roeRegex = /th_cop_anal13(?:[\s\S]*?<td.*?>){4}\s*([\d.-]+)/;
-            const roeMatch = html.match(roeRegex);
-            roe = (roeMatch && roeMatch[1] !== '-') ? parseFloat(roeMatch[1]) : null;
+                const perMatch = html.match(/<em id="_per">([\d.]+)<\/em>/);
+                const pbrMatch = html.match(/<em id="_pbr">([\d.]+)<\/em>/);
+                const tpMatch = html.match(/class="rwidth"[\s\S]*?<span class="bar">l<\/span>[\s\S]*?<em>([\d,]+)<\/em>/);
 
-            console.log(`Scraped for ${code}: PER=${per}, PBR=${pbr}, ROE=${roe}, TP=${targetPrice}`);
-        } catch (scrapingError) {
-            console.error(`Scraping Error for ${code}:`, scrapingError.message);
+                per = perMatch ? parseFloat(perMatch[1]) : null;
+                pbr = pbrMatch ? parseFloat(pbrMatch[1]) : null;
+                targetPrice = tpMatch ? parseInt(tpMatch[1].replace(/,/g, '')) : null;
+
+                const roeRegex = /th_cop_anal13(?:[\s\S]*?<td.*?>){4}\s*([\d.-]+)/;
+                const roeMatch = html.match(roeRegex);
+                roe = (roeMatch && roeMatch[1] !== '-') ? parseFloat(roeMatch[1]) : null;
+
+                console.log(`Scraped for ${code}: PER=${per}, PBR=${pbr}, ROE=${roe}, TP=${targetPrice}`);
+            } catch (scrapingError) {
+                console.error(`Scraping Error for ${code}:`, scrapingError.message);
+            }
         }
 
         const latestMatch = allMatches[allMatches.length - 1];
@@ -342,20 +402,36 @@ async function getStockData(code, fallbackName = null) {
 
         const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
 
-        const existing = db.prepare('SELECT name FROM stocks WHERE code = ?').get(code);
+        const existing = db.prepare('SELECT name, category FROM stocks WHERE code = ?').get(code);
+
+        let industry = null;
+        try {
+            // Updated industry regex: more flexible with attributes
+            const indMatch = html.match(/type=upjong&no=\d+["'][^>]*>([^<]+)<\/a>/);
+            if (indMatch) industry = indMatch[1].trim();
+            console.log(`Detected industry for ${code}: ${industry}`);
+        } catch (e) {
+            console.error(`Industry Scrape Error for ${code}:`, e.message);
+        }
+
+        const categoryToSave = mapToCategory(industry);
+
         let nameToSave = code;
         if (fallbackName) {
             nameToSave = fallbackName;
-        } else if (existing && existing.name !== code) {
+        } else if (existing && existing.name && existing.name !== code) {
             nameToSave = existing.name;
         } else {
-            const nameMatch = html?.match(/<title>(.*?) : Npay 증권<\/title>/);
-            if (nameMatch) nameToSave = nameMatch[1];
+            // Final simplest name scraping from title tag: "Name : ..."
+            const nameMatch = html?.match(/<title>(.*?) : /);
+            if (nameMatch) {
+                nameToSave = nameMatch[1].trim();
+            }
         }
 
         db.prepare(`
-            INSERT INTO stocks (code, name, price, change, change_rate, per, pbr, roe, target_price, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO stocks (code, name, price, change, change_rate, per, pbr, roe, target_price, category, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(code) DO UPDATE SET
                 price = excluded.price,
                 name = excluded.name,
@@ -363,8 +439,9 @@ async function getStockData(code, fallbackName = null) {
                 pbr = excluded.pbr,
                 roe = excluded.roe,
                 target_price = excluded.target_price,
+                category = excluded.category,
                 last_updated = CURRENT_TIMESTAMP
-        `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice);
+        `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave);
 
         // Advanced Analysis Generation Logic
         const historyRev = history.reverse();
@@ -450,7 +527,7 @@ async function getStockData(code, fallbackName = null) {
                 created_at = CURRENT_TIMESTAMP
         `).run(code, analysis, advice, opinion, tossUrl, chartPath);
 
-        return {
+        const result = {
             code,
             name: nameToSave,
             price: latestPrice,
@@ -465,13 +542,15 @@ async function getStockData(code, fallbackName = null) {
             tossUrl,
             chartPath
         };
+        setCache(code, result);
+        return result;
     } catch (error) {
         console.error(`API Error for ${code}:`, error.message);
         const stock = db.prepare('SELECT * FROM stocks WHERE code = ?').get(code);
         const history = db.prepare('SELECT date, price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
         const analysisData = db.prepare('SELECT * FROM stock_analysis WHERE code = ?').get(code);
 
-        return stock ? {
+        const fallback = stock ? {
             ...stock,
             history: history.reverse(),
             investorData: [],
@@ -481,6 +560,8 @@ async function getStockData(code, fallbackName = null) {
             tossUrl: analysisData?.toss_url,
             chartPath: analysisData?.chart_path
         } : null;
+        if (fallback) setCache(code, fallback);
+        return fallback;
     }
 }
 
@@ -550,23 +631,20 @@ app.delete('/api/holdings/:code', (req, res) => {
 });
 
 // Get All Stocks (Rule 13: Include current price and opinion)
-app.get('/api/stocks', async (req, res) => {
+// Uses DB data directly — prices are kept fresh by syncMajorStocks background job
+app.get('/api/stocks', (req, res) => {
     try {
-        const stocks = db.prepare('SELECT * FROM stocks ORDER BY category, name').all();
-        const results = await Promise.all(stocks.map(async (s) => {
-            let currentPrice = s.price;
-            // If price is missing, attempt to fetch it
-            if (!currentPrice) {
-                const refreshed = await getStockData(s.code, s.name);
-                currentPrice = refreshed?.price || 0;
-            }
+        const stocks = db.prepare(`
+            SELECT s.*, a.opinion
+            FROM stocks s
+            LEFT JOIN stock_analysis a ON s.code = a.code
+            ORDER BY s.category, s.name
+        `).all();
 
-            const analysis = db.prepare('SELECT opinion FROM stock_analysis WHERE code = ?').get(s.code);
-            return {
-                ...s,
-                price: currentPrice,
-                opinion: analysis ? analysis.opinion : '중립적'
-            };
+        const results = stocks.map(s => ({
+            ...s,
+            price: s.price || 0,
+            opinion: s.opinion || '중립적'
         }));
         res.json(results);
     } catch (error) {
@@ -590,6 +668,51 @@ app.get('/api/search', (req, res) => {
     } catch (error) {
         console.error('Search Error:', error.message);
         res.status(500).json({ error: 'Search failed' });
+    }
+});
+
+// Manual Add Stock
+app.post('/api/stocks', async (req, res) => {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Code is required' });
+
+    try {
+        const data = await getStockData(code);
+        if (data) {
+            res.json(data);
+        } else {
+            res.status(404).json({ error: 'Failed to fetch stock data or invalid code' });
+        }
+    } catch (error) {
+        console.error('Manual Add Error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Delete Stock Endpoint
+app.delete('/api/stocks/:code', (req, res) => {
+    const { code } = req.params;
+    try {
+        // Start a transaction to ensure atomic deletion
+        const deleteTransaction = db.transaction((stockCode) => {
+            // Delete from all dependent tables first due to FK constraints
+            db.prepare('DELETE FROM recommended_stocks WHERE code = ?').run(stockCode);
+            db.prepare('DELETE FROM stock_analysis WHERE code = ?').run(stockCode);
+            db.prepare('DELETE FROM holding_stocks WHERE code = ?').run(stockCode);
+            db.prepare('DELETE FROM stock_history WHERE code = ?').run(stockCode);
+            const result = db.prepare('DELETE FROM stocks WHERE code = ?').run(stockCode);
+            return result.changes;
+        });
+
+        const changes = deleteTransaction(code);
+        if (changes > 0) {
+            res.json({ success: true, message: `Stock ${code} and all related data removed successfully.` });
+        } else {
+            res.status(404).json({ error: 'Stock not found' });
+        }
+    } catch (error) {
+        console.error('Delete Error:', error.message);
+        res.status(500).json({ error: 'Failed to delete stock due to database error' });
     }
 });
 
@@ -669,6 +792,68 @@ app.get('/api/recommendations', async (req, res) => {
     } catch (error) {
         console.error('Recommendations API Error:', error.message);
         res.status(500).json({ error: 'Failed to fetch recommendations' });
+    }
+});
+
+// Portfolio History: aggregate daily portfolio value via single JOIN query
+app.get('/api/holdings/history', (req, res) => {
+    try {
+        const result = db.prepare(`
+            SELECT
+                sh.date,
+                CAST(SUM(sh.price * h.weight) AS INTEGER) as value,
+                CAST(SUM(h.avg_price * h.weight) AS INTEGER) as cost
+            FROM stock_history sh
+            JOIN holding_stocks h ON sh.code = h.code
+            WHERE sh.date IN (
+                SELECT DISTINCT date FROM stock_history
+                ORDER BY date DESC LIMIT 20
+            )
+            GROUP BY sh.date
+            ORDER BY sh.date
+        `).all();
+
+        const mapped = result.map(d => ({
+            date: d.date,
+            value: d.value,
+            cost: d.cost,
+            profitRate: d.cost > 0
+                ? parseFloat(((d.value - d.cost) / d.cost * 100).toFixed(2))
+                : 0,
+        }));
+
+        res.json(mapped);
+    } catch (error) {
+        console.error('Holdings History Error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch holdings history' });
+    }
+});
+
+// Stock volatility: standard deviation of daily returns over recent N days
+app.get('/api/stock/:code/volatility', (req, res) => {
+    const { code } = req.params;
+    try {
+        const history = db.prepare(
+            'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 6'
+        ).all(code);
+
+        if (history.length < 2) {
+            return res.json({ volatility: null });
+        }
+
+        const prices = history.map(h => h.price).reverse();
+        const returns = [];
+        for (let i = 1; i < prices.length; i++) {
+            returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+        }
+        const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+        const variance = returns.reduce((a, r) => a + Math.pow(r - mean, 2), 0) / returns.length;
+        const volatility = parseFloat((Math.sqrt(variance) * 100).toFixed(2));
+
+        res.json({ volatility });
+    } catch (error) {
+        console.error('Volatility Error:', error.message);
+        res.status(500).json({ error: 'Failed to calculate volatility' });
     }
 });
 

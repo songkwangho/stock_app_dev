@@ -37,5 +37,25 @@ export const stockApi = {
     getAllStocks: async () => {
         const response = await axios.get(`${API_BASE_URL}/stocks`);
         return response.data;
+    },
+    // Add New Stock
+    addStock: async (code: string) => {
+        const response = await axios.post(`${API_BASE_URL}/stocks`, { code });
+        return response.data;
+    },
+    // Delete Stock from DB
+    deleteStock: async (code: string) => {
+        const response = await axios.delete(`${API_BASE_URL}/stocks/${code}`);
+        return response.data;
+    },
+    // Portfolio history (daily aggregated value)
+    getHoldingsHistory: async () => {
+        const response = await axios.get(`${API_BASE_URL}/holdings/history`);
+        return response.data;
+    },
+    // Stock volatility (std dev of daily returns)
+    getVolatility: async (code: string) => {
+        const response = await axios.get(`${API_BASE_URL}/stock/${code}/volatility`);
+        return response.data;
     }
 };
