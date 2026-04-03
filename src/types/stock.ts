@@ -90,3 +90,13 @@ export interface StockSummary {
   opinion?: string;
   price?: number;
 }
+
+export interface Alert {
+  id: number;
+  code: string;
+  name: string;
+  type: string;
+  message: string;
+  read: number;
+  created_at: string;
+}

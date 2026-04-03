@@ -1,11 +1,11 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
-  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers
+  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X
 } from 'lucide-react';
 import { stockApi } from './api/stockApi';
 import { useStockStore } from './stores/useStockStore';
 import NavButton from './components/NavButton';
-import type { StockSummary } from './types/stock';
+import type { StockSummary, Alert } from './types/stock';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const HoldingsAnalysisPage = lazy(() => import('./pages/HoldingsAnalysisPage'));
@@ -14,10 +14,18 @@ const MajorStocksPage = lazy(() => import('./pages/MajorStocksPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const StockDetailView = lazy(() => import('./components/StockDetailView'));
 
+const ALERT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  sma5_break: { label: '5일선 이탈', color: 'text-red-400 bg-red-500/10' },
+  sma5_touch: { label: '5일선 지지', color: 'text-emerald-400 bg-emerald-500/10' },
+  target_near: { label: '목표가 근접', color: 'text-yellow-400 bg-yellow-500/10' },
+  undervalued: { label: '저평가', color: 'text-blue-400 bg-blue-500/10' },
+  sell_signal: { label: '매도 신호', color: 'text-red-400 bg-red-500/10' },
+};
+
 const App = () => {
   const {
     activeTab, selectedStock, holdings,
-    navigateTo, handleDetailClick, setActiveTab,
+    navigateTo, handleDetailClick,
     fetchHoldings, addHolding, deleteHolding,
   } = useStockStore();
 
@@ -25,9 +33,30 @@ const App = () => {
   const [searchResults, setSearchResults] = useState<StockSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Track the previous tab before entering detail view
+  const prevTabRef = useRef('dashboard');
+
+  // Alerts state
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showAlerts, setShowAlerts] = useState(false);
+
   useEffect(() => {
     fetchHoldings();
   }, [fetchHoldings]);
+
+  // Fetch unread count periodically
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const data = await stockApi.getUnreadAlertCount();
+        setUnreadCount(data.count);
+      } catch { /* silent */ }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -49,16 +78,45 @@ const App = () => {
   }, [searchQuery]);
 
   const handleSearchSelect = (stock: StockSummary) => {
+    prevTabRef.current = activeTab;
     handleDetailClick(stock);
     setSearchQuery('');
     setSearchResults([]);
+  };
+
+  const handleNavDetailClick = (stock: StockSummary) => {
+    prevTabRef.current = activeTab;
+    handleDetailClick(stock);
   };
 
   const handleBack = () => {
     if (selectedStock?.category === '보유 종목') {
       navigateTo('analysis');
     } else {
-      navigateTo('recommendations');
+      navigateTo(prevTabRef.current === 'detail' ? 'dashboard' : prevTabRef.current);
+    }
+  };
+
+  const handleToggleAlerts = async () => {
+    if (!showAlerts) {
+      try {
+        const data = await stockApi.getAlerts();
+        setAlerts(data);
+        await stockApi.markAlertsRead();
+        setUnreadCount(0);
+      } catch (error) {
+        console.error('Failed to fetch alerts:', error);
+      }
+    }
+    setShowAlerts(!showAlerts);
+  };
+
+  const handleDeleteAlert = async (id: number) => {
+    try {
+      await stockApi.deleteAlert(id);
+      setAlerts(alerts.filter(a => a.id !== id));
+    } catch (error) {
+      console.error('Failed to delete alert:', error);
     }
   };
 
@@ -133,13 +191,66 @@ const App = () => {
           </div>
 
           <div className="flex items-center space-x-5">
-            <button
-              title="알림 확인"
-              className="bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all relative"
-            >
-              <Bell size={20} className="text-slate-400" />
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950"></span>
-            </button>
+            {/* Alerts Bell */}
+            <div className="relative">
+              <button
+                title="알림 확인"
+                onClick={handleToggleAlerts}
+                className="bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all relative"
+              >
+                <Bell size={20} className="text-slate-400" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-slate-950 flex items-center justify-center text-[9px] font-bold text-white px-1">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Alerts Panel */}
+              {showAlerts && (
+                <div className="absolute top-full right-0 mt-2 w-[400px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
+                    <h4 className="text-sm font-bold">알림</h4>
+                    <button onClick={() => setShowAlerts(false)} className="text-slate-500 hover:text-white">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-auto">
+                    {alerts.length === 0 ? (
+                      <div className="p-8 text-center text-slate-600 text-sm">
+                        알림이 없습니다.
+                      </div>
+                    ) : (
+                      alerts.map((alert) => {
+                        const typeInfo = ALERT_TYPE_LABELS[alert.type] || { label: alert.type, color: 'text-slate-400 bg-slate-500/10' };
+                        return (
+                          <div key={alert.id} className="px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors group">
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>
+                                  {typeInfo.label}
+                                </span>
+                                <span className="text-[10px] text-slate-600">{alert.name}</span>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteAlert(alert.id)}
+                                className="text-slate-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-400 leading-relaxed">{alert.message}</p>
+                            <p className="text-[10px] text-slate-600 mt-1">
+                              {new Date(alert.created_at).toLocaleString('ko-KR')}
+                            </p>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="h-6 w-px bg-slate-800"></div>
             <div className="flex items-center space-x-3 cursor-pointer group">
               <div className="text-right">
@@ -161,10 +272,10 @@ const App = () => {
                 <span>로딩 중...</span>
               </div>
             }>
-              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onAdd={addHolding} onDelete={deleteHolding} onDetailClick={handleDetailClick} />}
-              {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onDetailClick={handleDetailClick} />}
-              {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleDetailClick} />}
-              {activeTab === 'major' && <MajorStocksPage onDetailClick={handleDetailClick} />}
+              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onAdd={addHolding} onDelete={deleteHolding} onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'major' && <MajorStocksPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'settings' && <SettingsPage />}
               {activeTab === 'detail' && selectedStock && (
                 <StockDetailView stock={selectedStock} onAdd={addHolding} onBack={handleBack} />

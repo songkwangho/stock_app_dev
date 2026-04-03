@@ -23,6 +23,7 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
   const [addForm, setAddForm] = useState({ avgPrice: '0', weight: '5' });
   const [adding, setAdding] = useState(false);
   const [volatility, setVolatility] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -424,8 +425,27 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
                 <div className="text-3xl font-black text-center text-white">{computeProbability()}%</div>
                 <p className="text-[10px] text-slate-500 text-center mt-1">상승 예측 확률</p>
               </div>
-              <button className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20">
-                실시간 데이터 업데이트
+              <button
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    const [data, vol] = await Promise.all([
+                      stockApi.refreshStock(stock.code),
+                      stockApi.getVolatility(stock.code),
+                    ]);
+                    setStockDetail(data);
+                    setVolatility(vol.volatility);
+                  } catch (error) {
+                    console.error('Refresh failed:', error);
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+                disabled={refreshing}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {refreshing && <RefreshCw className="animate-spin" size={14} />}
+                <span>{refreshing ? '업데이트 중...' : '실시간 데이터 업데이트'}</span>
               </button>
             </div>
           </div>

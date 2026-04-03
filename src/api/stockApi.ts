@@ -57,5 +57,27 @@ export const stockApi = {
     getVolatility: async (code: string) => {
         const response = await axios.get(`${API_BASE_URL}/stock/${code}/volatility`);
         return response.data;
+    },
+    // Force refresh stock data (invalidate cache + re-fetch + chart capture)
+    refreshStock: async (code: string) => {
+        const response = await axios.post(`${API_BASE_URL}/stock/${code}/refresh`);
+        return response.data;
+    },
+    // Alerts
+    getAlerts: async () => {
+        const response = await axios.get(`${API_BASE_URL}/alerts`);
+        return response.data;
+    },
+    getUnreadAlertCount: async () => {
+        const response = await axios.get(`${API_BASE_URL}/alerts/unread-count`);
+        return response.data;
+    },
+    markAlertsRead: async () => {
+        const response = await axios.post(`${API_BASE_URL}/alerts/read`);
+        return response.data;
+    },
+    deleteAlert: async (id: number) => {
+        const response = await axios.delete(`${API_BASE_URL}/alerts/${id}`);
+        return response.data;
     }
 };

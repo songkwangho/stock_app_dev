@@ -4,7 +4,9 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import puppeteer from 'puppeteer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,9 +101,22 @@ db.prepare(`
   )
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    name TEXT,
+    type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
 // Database Indices for query performance
 db.prepare('CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date)').run();
 db.prepare('CREATE INDEX IF NOT EXISTS idx_stocks_category ON stocks(category)').run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(read, created_at)').run();
 
 // Migration: Handle structural changes
 try {
@@ -267,9 +282,114 @@ function mapToCategory(industry) {
     return '소비재/서비스'; // Default
 }
 
+// --- Toss Securities Chart Capture ---
+const chartsDir = path.join(__dirname, '..', 'public', 'charts');
+if (!fs.existsSync(chartsDir)) {
+    fs.mkdirSync(chartsDir, { recursive: true });
+}
+
+let browserInstance = null;
+
+async function getBrowser() {
+    if (!browserInstance || !browserInstance.connected) {
+        browserInstance = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+    }
+    return browserInstance;
+}
+
+async function captureChart(code) {
+    const outputPath = path.join(chartsDir, `${code}.png`);
+
+    // Skip if captured recently (less than 1 hour old)
+    if (fs.existsSync(outputPath)) {
+        const stat = fs.statSync(outputPath);
+        const ageMs = Date.now() - stat.mtimeMs;
+        if (ageMs < 60 * 60 * 1000) return `/charts/${code}.png`;
+    }
+
+    try {
+        const browser = await getBrowser();
+        const page = await browser.newPage();
+        await page.setViewport({ width: 800, height: 460 });
+
+        await page.goto(`https://tossinvest.com/stocks/${code}/order`, {
+            waitUntil: 'networkidle2',
+            timeout: 20000
+        });
+
+        // Wait for chart element to render
+        await page.waitForSelector('canvas, svg, [class*="chart"], [class*="Chart"]', { timeout: 10000 }).catch(() => {});
+        await new Promise(r => setTimeout(r, 2000));
+
+        await page.screenshot({ path: outputPath, fullPage: false });
+        await page.close();
+
+        console.log(`Chart captured for ${code}`);
+        return `/charts/${code}.png`;
+    } catch (error) {
+        console.error(`Chart capture failed for ${code}:`, error.message);
+        // Return existing image if available
+        return fs.existsSync(outputPath) ? `/charts/${code}.png` : null;
+    }
+}
+
 // Run sync on start and every 1 hour
 syncMajorStocks();
 setInterval(syncMajorStocks, 60 * 60 * 1000);
+
+// Alert generation: check conditions and create alerts (avoid duplicates within 24h)
+function generateAlerts(code, name, price, sma5, targetPrice, opinion, isHolding) {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const hasDuplicate = (type) => {
+        return db.prepare(
+            'SELECT 1 FROM alerts WHERE code = ? AND type = ? AND created_at > ?'
+        ).get(code, type, oneDayAgo);
+    };
+
+    // Holding alerts
+    if (isHolding && sma5) {
+        if (price < sma5 && !hasDuplicate('sma5_break')) {
+            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
+                code, name, 'sma5_break',
+                `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원)을 하향 이탈했습니다. 리스크 관리가 필요합니다.`
+            );
+        }
+        if (price >= sma5 * 0.99 && price <= sma5 * 1.01 && !hasDuplicate('sma5_touch')) {
+            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
+                code, name, 'sma5_touch',
+                `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있습니다. 추가매수 타점을 검토해 보세요.`
+            );
+        }
+    }
+
+    // Target price alerts
+    if (targetPrice && price > 0) {
+        if (price >= targetPrice * 0.95 && !hasDuplicate('target_near')) {
+            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
+                code, name, 'target_near',
+                `${name}(${code}) 현재가(${price.toLocaleString()}원)가 목표가(${targetPrice.toLocaleString()}원)에 근접했습니다.`
+            );
+        }
+        if (price < targetPrice * 0.7 && !hasDuplicate('undervalued')) {
+            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
+                code, name, 'undervalued',
+                `${name}(${code}) 현재가가 목표가 대비 30% 이상 저평가 상태입니다. 매수 기회를 검토해 보세요.`
+            );
+        }
+    }
+
+    // Opinion change alert
+    if (opinion === '매도' && isHolding && !hasDuplicate('sell_signal')) {
+        db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
+            code, name, 'sell_signal',
+            `${name}(${code}) 분석 의견이 "매도"로 전환되었습니다. 포지션 점검이 필요합니다.`
+        );
+    }
+}
 
 // Helper function to fetch and store stock data (with cache)
 async function getStockData(code, fallbackName = null) {
@@ -510,10 +630,16 @@ async function getStockData(code, fallbackName = null) {
             }
         }
 
-        const tossUrl = `https://tose.im/stock/${code}`;
+        const tossUrl = `https://tossinvest.com/stocks/${code}/order`;
+
+        // Capture chart in background (don't block response)
         const chartPath = `/charts/${code}.png`;
+        captureChart(code).catch(e => console.error(`Background chart capture error for ${code}:`, e.message));
 
         console.log(`Saving analysis for ${code} with chartPath: ${chartPath}`);
+
+        // Generate alerts for significant events
+        generateAlerts(code, nameToSave, latestPrice, sma5, targetPrice, opinion, isHolding);
 
         db.prepare(`
             INSERT INTO stock_analysis (code, analysis, advice, opinion, toss_url, chart_path, created_at)
@@ -573,6 +699,28 @@ app.get('/api/stock/:code', async (req, res) => {
         res.json(data);
     } else {
         res.status(404).json({ error: 'Stock not found' });
+    }
+});
+
+// Force refresh: invalidate cache and re-fetch
+app.post('/api/stock/:code/refresh', async (req, res) => {
+    const { code } = req.params;
+    stockCache.delete(code);
+    try {
+        const [data, chartResult] = await Promise.allSettled([
+            getStockData(code),
+            captureChart(code)
+        ]);
+        const stockData = data.status === 'fulfilled' ? data.value : null;
+        if (stockData) {
+            stockData.chartPath = chartResult.status === 'fulfilled' ? chartResult.value : stockData.chartPath;
+            res.json(stockData);
+        } else {
+            res.status(404).json({ error: 'Stock not found' });
+        }
+    } catch (error) {
+        console.error('Refresh Error:', error.message);
+        res.status(500).json({ error: 'Refresh failed' });
     }
 });
 
@@ -854,6 +1002,46 @@ app.get('/api/stock/:code/volatility', (req, res) => {
     } catch (error) {
         console.error('Volatility Error:', error.message);
         res.status(500).json({ error: 'Failed to calculate volatility' });
+    }
+});
+
+// --- Alerts API ---
+app.get('/api/alerts', (req, res) => {
+    try {
+        const alerts = db.prepare(
+            'SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50'
+        ).all();
+        res.json(alerts);
+    } catch (error) {
+        console.error('Alerts GET Error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch alerts' });
+    }
+});
+
+app.get('/api/alerts/unread-count', (req, res) => {
+    try {
+        const result = db.prepare('SELECT COUNT(*) as count FROM alerts WHERE read = 0').get();
+        res.json({ count: result.count });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to count alerts' });
+    }
+});
+
+app.post('/api/alerts/read', (req, res) => {
+    try {
+        db.prepare('UPDATE alerts SET read = 1 WHERE read = 0').run();
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to mark alerts as read' });
+    }
+});
+
+app.delete('/api/alerts/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM alerts WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete alert' });
     }
 });
 
