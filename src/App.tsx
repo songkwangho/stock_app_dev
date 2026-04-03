@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
-  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X
+  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X, Eye
 } from 'lucide-react';
 import { stockApi } from './api/stockApi';
 import { useStockStore } from './stores/useStockStore';
 import NavButton from './components/NavButton';
-import type { StockSummary, Alert } from './types/stock';
+import type { StockSummary, Alert, MarketIndex } from './types/stock';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const HoldingsAnalysisPage = lazy(() => import('./pages/HoldingsAnalysisPage'));
@@ -13,6 +13,7 @@ const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'));
 const MajorStocksPage = lazy(() => import('./pages/MajorStocksPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const StockDetailView = lazy(() => import('./components/StockDetailView'));
+const WatchlistPage = lazy(() => import('./pages/WatchlistPage'));
 
 const ALERT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   sma5_break: { label: '5일선 이탈', color: 'text-red-400 bg-red-500/10' },
@@ -40,12 +41,13 @@ const App = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
 
   useEffect(() => {
     fetchHoldings();
   }, [fetchHoldings]);
 
-  // Fetch unread count periodically
+  // Fetch unread count and market indices periodically
   useEffect(() => {
     const fetchUnread = async () => {
       try {
@@ -53,8 +55,15 @@ const App = () => {
         setUnreadCount(data.count);
       } catch { /* silent */ }
     };
+    const fetchIndices = async () => {
+      try {
+        const data = await stockApi.getMarketIndices();
+        setMarketIndices(data);
+      } catch { /* silent */ }
+    };
     fetchUnread();
-    const interval = setInterval(fetchUnread, 60000);
+    fetchIndices();
+    const interval = setInterval(() => { fetchUnread(); fetchIndices(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -135,6 +144,7 @@ const App = () => {
           <NavButton active={activeTab === 'dashboard'} onClick={() => navigateTo('dashboard')} icon={<LayoutDashboard size={20} />} label="대시보드" />
           <NavButton active={activeTab === 'analysis'} onClick={() => navigateTo('analysis')} icon={<TrendingUp size={20} />} label="보유 종목 분석" />
           <NavButton active={activeTab === 'recommendations' || (activeTab === 'detail' && selectedStock?.category !== '보유 종목' && selectedStock?.category !== '주요 종목')} onClick={() => navigateTo('recommendations')} icon={<Star size={20} />} label="유망 종목 추천" />
+          <NavButton active={activeTab === 'watchlist'} onClick={() => navigateTo('watchlist')} icon={<Eye size={20} />} label="관심종목" />
           <NavButton active={activeTab === 'major'} onClick={() => navigateTo('major')} icon={<Layers size={20} />} label="주요 종목 현황" />
           <NavButton active={activeTab === 'settings'} onClick={() => navigateTo('settings')} icon={<Settings size={20} />} label="설정" />
         </nav>
@@ -156,6 +166,23 @@ const App = () => {
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/5 blur-[120px] rounded-full -mr-48 -mt-48 pointer-events-none"></div>
 
         <header className="h-20 border-b border-slate-800/40 px-10 flex items-center justify-between z-10">
+          <div className="flex items-center space-x-6">
+            {/* Market Indices */}
+            {marketIndices.length > 0 && (
+              <div className="flex items-center space-x-4">
+                {marketIndices.map(idx => (
+                  <div key={idx.symbol} className="flex items-center space-x-2">
+                    <span className="text-[10px] font-bold text-slate-500">{idx.symbol}</span>
+                    <span className="text-xs font-bold text-white">{idx.value?.toLocaleString() || '---'}</span>
+                    {idx.changeRate && (
+                      <span className={`text-[10px] font-bold ${idx.positive ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {idx.positive ? '▲' : '▼'} {idx.changeRate}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           <div className="relative">
             <div className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl px-5 py-2.5 w-[420px] focus-within:border-blue-500/50 transition-all backdrop-blur-sm">
               <Search size={18} className="text-slate-500 mr-3" />
@@ -188,6 +215,7 @@ const App = () => {
                 ))}
               </div>
             )}
+          </div>
           </div>
 
           <div className="flex items-center space-x-5">
@@ -275,6 +303,7 @@ const App = () => {
               {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onAdd={addHolding} onDelete={deleteHolding} onDetailClick={handleNavDetailClick} />}
               {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onDetailClick={handleNavDetailClick} />}
               {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'watchlist' && <WatchlistPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'major' && <MajorStocksPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'settings' && <SettingsPage />}
               {activeTab === 'detail' && selectedStock && (

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(node server.js)",
+      "Bash(echo \"Server PID: $!\")",
+      "Read(//c/Users/aistudio/AppData/Local/Temp/claude/c--Users-aistudio-Documents-stock-app-dev/0109bae9-d1f8-44cc-8cc8-1e8106983895/tasks/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

@@ -20,7 +20,7 @@ export const stockApi = {
         const response = await axios.get(`${API_BASE_URL}/holdings`);
         return response.data;
     },
-    addHolding: async (stock: { code: string, name: string, avgPrice: number, weight: number }) => {
+    addHolding: async (stock: { code: string, name: string, avgPrice: number, weight: number, quantity?: number }) => {
         const response = await axios.post(`${API_BASE_URL}/holdings`, stock);
         return response.data;
     },
@@ -78,6 +78,29 @@ export const stockApi = {
     },
     deleteAlert: async (id: number) => {
         const response = await axios.delete(`${API_BASE_URL}/alerts/${id}`);
+        return response.data;
+    },
+    // Market indices
+    getMarketIndices: async () => {
+        const response = await axios.get(`${API_BASE_URL}/market/indices`);
+        return response.data;
+    },
+    // Watchlist
+    getWatchlist: async () => {
+        const response = await axios.get(`${API_BASE_URL}/watchlist`);
+        return response.data;
+    },
+    addToWatchlist: async (code: string) => {
+        const response = await axios.post(`${API_BASE_URL}/watchlist`, { code });
+        return response.data;
+    },
+    removeFromWatchlist: async (code: string) => {
+        const response = await axios.delete(`${API_BASE_URL}/watchlist/${code}`);
+        return response.data;
+    },
+    // Technical indicators
+    getIndicators: async (code: string) => {
+        const response = await axios.get(`${API_BASE_URL}/stock/${code}/indicators`);
         return response.data;
     }
 };

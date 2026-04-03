@@ -13,7 +13,7 @@ interface StockStore {
   handleDetailClick: (stock: StockSummary) => void;
 
   fetchHoldings: () => Promise<void>;
-  addHolding: (stock: { code: string; name: string; value: number; avgPrice: number }) => Promise<void>;
+  addHolding: (stock: { code: string; name: string; value: number; avgPrice: number; quantity?: number }) => Promise<void>;
   deleteHolding: (index: number) => Promise<void>;
 }
 
@@ -38,6 +38,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
         value: h.weight as number,
         avgPrice: h.avg_price as number,
         currentPrice: h.price as number,
+        quantity: (h.quantity as number) || 0,
       }));
       set({ holdings: mappedHoldings });
     } catch (error) {
@@ -52,6 +53,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
         name: stock.name,
         avgPrice: stock.avgPrice,
         weight: stock.value,
+        quantity: stock.quantity || 0,
       });
       set((state) => ({
         holdings: [
@@ -62,6 +64,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
             value: added.weight,
             avgPrice: added.avg_price,
             currentPrice: added.price,
+            quantity: added.quantity || 0,
           },
         ],
       }));

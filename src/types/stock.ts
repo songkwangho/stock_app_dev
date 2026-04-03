@@ -19,6 +19,7 @@ export interface Holding {
   value: number;
   avgPrice: number;
   currentPrice: number;
+  quantity: number;
 }
 
 export interface Recommendation {
@@ -61,6 +62,10 @@ export interface StockDetail {
 export interface HistoryEntry {
   date: string;
   price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
 }
 
 export interface InvestorEntry {
@@ -73,6 +78,10 @@ export interface InvestorEntry {
 export interface ChartDataPoint {
   name: string;
   price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
   sma5: number | null;
   sma20: number | null;
 }
@@ -99,4 +108,39 @@ export interface Alert {
   message: string;
   read: number;
   created_at: string;
+}
+
+export interface MarketIndex {
+  symbol: string;
+  value: number | null;
+  change: string;
+  changeRate: string;
+  positive: boolean;
+}
+
+export interface WatchlistItem {
+  code: string;
+  name: string;
+  category: string;
+  price: number;
+  opinion?: string;
+  added_at: string;
+}
+
+export interface IndicatorDetail {
+  indicator: string;
+  signal: string;
+  description: string;
+  color: string;
+}
+
+export interface TechnicalIndicators {
+  rsi: number | null;
+  macd: { macdLine: number; signal: number; histogram: number } | null;
+  bollinger: { upper: number; middle: number; lower: number; percentB: number } | null;
+  summary: {
+    signal: string;
+    description: string;
+    details: IndicatorDetail[];
+  } | null;
 }

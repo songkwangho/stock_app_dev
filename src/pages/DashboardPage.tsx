@@ -76,7 +76,7 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: DashboardPa
     : null;
   const assetChangePositive = assetChange !== null ? parseFloat(assetChange) >= 0 : true;
 
-  const [newStock, setNewStock] = useState({ code: '', name: '', value: '', avgPrice: '' });
+  const [newStock, setNewStock] = useState({ code: '', name: '', value: '', avgPrice: '', quantity: '' });
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -180,7 +180,14 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: DashboardPa
                   placeholder="매수가"
                   value={newStock.avgPrice}
                   onChange={(e) => setNewStock({ ...newStock, avgPrice: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500 w-32"
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500 w-28"
+                />
+                <input
+                  type="number"
+                  placeholder="수량"
+                  value={newStock.quantity}
+                  onChange={(e) => setNewStock({ ...newStock, quantity: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500 w-20"
                 />
                 <button
                   onClick={() => {
@@ -190,8 +197,9 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: DashboardPa
                         name: newStock.name,
                         value: parseInt(newStock.value),
                         avgPrice: parseInt(newStock.avgPrice),
+                        quantity: parseInt(newStock.quantity || '0'),
                       });
-                      setNewStock({ code: '', name: '', value: '', avgPrice: '' });
+                      setNewStock({ code: '', name: '', value: '', avgPrice: '', quantity: '' });
                     }
                   }}
                   title="종목 추가"
@@ -214,11 +222,17 @@ const DashboardPage = ({ holdings, onAdd, onDelete, onDetailClick }: DashboardPa
                             <p className="text-sm font-bold">{stock.name}</p>
                             <p className="text-[10px] text-slate-500 bg-slate-900 px-1.5 rounded">{stock.value}%</p>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap">
                             <p className="text-[10px] text-slate-500">평단: ₩{stock.avgPrice?.toLocaleString()}</p>
+                            {stock.quantity > 0 && <p className="text-[10px] text-slate-500">× {stock.quantity}주</p>}
                             <p className={`text-[10px] font-bold ${pnlRate >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                               {pnlRate >= 0 ? '+' : ''}{pnlRate.toFixed(1)}%
                             </p>
+                            {stock.quantity > 0 && (
+                              <p className="text-[10px] text-slate-500">
+                                평가: ₩{(stock.currentPrice * stock.quantity).toLocaleString()}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
