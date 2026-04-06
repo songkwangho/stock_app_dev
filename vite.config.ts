@@ -7,6 +7,9 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    host: '0.0.0.0',
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

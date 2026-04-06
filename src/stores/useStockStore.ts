@@ -53,7 +53,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
         code: stock.code,
         name: stock.name,
         avgPrice: stock.avgPrice,
-        weight: stock.value,
+        weight: 0,
         quantity: stock.quantity || 0,
       });
       await get().fetchHoldings();
@@ -68,7 +68,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
         code: stock.code,
         name: stock.name,
         avgPrice: stock.avgPrice,
-        weight: stock.value,
+        weight: 0,
         quantity: stock.quantity || 0,
       });
       await get().fetchHoldings();
@@ -80,9 +80,7 @@ export const useStockStore = create<StockStore>((set, get) => ({
   deleteHolding: async (code) => {
     try {
       await stockApi.deleteHolding(code);
-      set((state) => ({
-        holdings: state.holdings.filter((h) => h.code !== code),
-      }));
+      await get().fetchHoldings();
     } catch (error) {
       console.error('Failed to delete holding:', error);
     }

@@ -14,7 +14,25 @@
       "Bash(curl -s -m 3 http://localhost:3001/api/health)",
       "Bash(curl -s -m 5 http://localhost:3001/api/health)",
       "Bash(netstat -ano)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(sqlite3 stocks.db \".schema holding_stocks\")",
+      "Bash(sqlite3 stocks.db \".schema stocks\")",
+      "Bash(sqlite3 stocks.db \"SELECT code, name FROM stocks WHERE name LIKE '%유유제약%' OR name LIKE '%컴투스%';\")",
+      "Bash(sqlite3 stocks.db \"SELECT code, name FROM stocks LIMIT 10;\")",
+      "Bash(sqlite3 stocks.db \"SELECT COUNT\\(*\\) FROM stocks;\")",
+      "Bash(sqlite3 stocks.db \"SELECT code, name FROM stocks WHERE code IN \\('000220', '063080'\\);\")",
+      "Bash(sqlite3 stocks.db ':*)",
+      "Bash(sqlite3 stocks.db \"SELECT hs.device_id, hs.code, s.name, hs.avg_price, hs.quantity, hs.weight FROM holding_stocks hs JOIN stocks s ON hs.code = s.code;\")",
+      "Bash(curl -s -H \"X-Device-Id: default\" http://localhost:3001/api/holdings)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s http://localhost:3001/api/stock/000220)",
+      "Bash(curl -s http://localhost:3001/api/stock/063080)",
+      "Bash(findstr \":5173\\\\|:3001\")",
+      "Bash(tasklist)",
+      "Bash(taskkill //PID 58436 //F)",
+      "Bash(taskkill //PID 59152 //F)",
+      "Bash(sqlite3 stocks.db \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")",
+      "Bash(sqlite3 \"c:/Users/aistudio/Documents/stock_app_dev/stocks.db\" \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

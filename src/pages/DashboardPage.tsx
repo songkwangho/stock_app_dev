@@ -61,8 +61,8 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
     profitRate: d.profitRate,
   }));
 
-  const totalAsset = holdings.reduce((acc, cur) => acc + (cur.currentPrice * cur.value), 0);
-  const totalCost = holdings.reduce((acc, cur) => acc + (cur.avgPrice * cur.value), 0);
+  const totalAsset = holdings.reduce((acc, cur) => acc + (cur.currentPrice * (cur.quantity || 0)), 0);
+  const totalCost = holdings.reduce((acc, cur) => acc + (cur.avgPrice * (cur.quantity || 0)), 0);
   const totalPnL = totalAsset - totalCost;
   const avgProfitRate = totalCost > 0 ? (totalPnL / totalCost * 100) : 0;
 

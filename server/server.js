@@ -1054,23 +1054,43 @@ app.get('/api/holdings', async (req, res) => {
     }
 });
 
+// Recalculate weight for all holdings of a device based on investment cost
+function recalcWeights(deviceId) {
+    const holdings = db.prepare(
+        'SELECT code, avg_price, quantity FROM holding_stocks WHERE device_id = ?'
+    ).all(deviceId);
+    const totalCost = holdings.reduce((sum, h) => sum + (h.avg_price || 0) * (h.quantity || 0), 0);
+    if (totalCost <= 0) return;
+    const updateStmt = db.prepare('UPDATE holding_stocks SET weight = ? WHERE device_id = ? AND code = ?');
+    const txn = db.transaction(() => {
+        for (const h of holdings) {
+            const cost = (h.avg_price || 0) * (h.quantity || 0);
+            const weight = Math.round(cost / totalCost * 100);
+            updateStmt.run(weight, deviceId, h.code);
+        }
+    });
+    txn();
+}
+
 app.post('/api/holdings', async (req, res) => {
     const deviceId = requireDeviceId(req, res);
     if (!deviceId) return;
-    const { code, name, avgPrice, weight, quantity } = req.body;
+    const { code, name, avgPrice, quantity } = req.body;
     try {
         // Ensure master stock data exists
         const stockData = await getStockData(code, name);
 
         db.prepare(`
             INSERT INTO holding_stocks (device_id, code, avg_price, weight, quantity, last_updated)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(device_id, code) DO UPDATE SET
                 avg_price = excluded.avg_price,
-                weight = excluded.weight,
                 quantity = excluded.quantity,
                 last_updated = CURRENT_TIMESTAMP
-        `).run(deviceId, code, avgPrice, weight, quantity || 0);
+        `).run(deviceId, code, avgPrice, quantity || 0);
+
+        // Recalculate weights for all holdings
+        recalcWeights(deviceId);
 
         const updated = db.prepare(`
             SELECT s.*, h.avg_price, h.weight, h.quantity
@@ -1091,6 +1111,8 @@ app.delete('/api/holdings/:code', (req, res) => {
     const { code } = req.params;
     try {
         db.prepare('DELETE FROM holding_stocks WHERE device_id = ? AND code = ?').run(deviceId, code);
+        // Recalculate weights for remaining holdings
+        recalcWeights(deviceId);
         res.json({ success: true });
     } catch (error) {
         console.error('Holdings DELETE Error:', error.message);
@@ -1275,8 +1297,8 @@ app.get('/api/holdings/history', (req, res) => {
         const result = db.prepare(`
             SELECT
                 sh.date,
-                CAST(SUM(sh.price * h.weight) AS INTEGER) as value,
-                CAST(SUM(h.avg_price * h.weight) AS INTEGER) as cost
+                CAST(SUM(sh.price * h.quantity) AS INTEGER) as value,
+                CAST(SUM(h.avg_price * h.quantity) AS INTEGER) as cost
             FROM stock_history sh
             JOIN holding_stocks h ON sh.code = h.code
             WHERE h.device_id = ? AND sh.date IN (

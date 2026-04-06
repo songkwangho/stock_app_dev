@@ -14,15 +14,14 @@ interface HoldingsAnalysisPageProps {
 interface EditState {
   avgPrice: string;
   quantity: string;
-  value: string;
 }
 
 const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailClick }: HoldingsAnalysisPageProps) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ avgPrice: '', quantity: '', value: '' });
+  const [editState, setEditState] = useState<EditState>({ avgPrice: '', quantity: '' });
   const [newStock, setNewStock] = useState<{ code: string; name: string } | null>(null);
-  const [newForm, setNewForm] = useState({ avgPrice: '', quantity: '', value: '' });
+  const [newForm, setNewForm] = useState({ avgPrice: '', quantity: '' });
   const [searchResetKey, setSearchResetKey] = useState(0);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -39,11 +38,11 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         name: newStock.name,
         avgPrice: parseInt(newForm.avgPrice),
         quantity: parseInt(newForm.quantity || '0'),
-        value: parseInt(newForm.value || '5'),
+        value: 0,
       });
       showToast('success', `${newStock.name}이(가) 포트폴리오에 추가되었습니다.`);
       setNewStock(null);
-      setNewForm({ avgPrice: '', quantity: '', value: '' });
+      setNewForm({ avgPrice: '', quantity: '' });
       setSearchResetKey(k => k + 1);
     } catch {
       showToast('error', '종목 추가에 실패했습니다.');
@@ -55,7 +54,6 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
     setEditState({
       avgPrice: String(stock.avgPrice || ''),
       quantity: String(stock.quantity || '0'),
-      value: String(stock.value || ''),
     });
   };
 
@@ -66,7 +64,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         name: stock.name,
         avgPrice: parseInt(editState.avgPrice),
         quantity: parseInt(editState.quantity || '0'),
-        value: parseInt(editState.value || '5'),
+        value: 0,
       });
       setEditingCode(null);
       showToast('success', `${stock.name} 보유 정보가 수정되었습니다.`);
@@ -170,7 +168,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     <span className="text-xs">취소</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
                     <input
@@ -188,16 +186,6 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                       placeholder="수량"
                       value={newForm.quantity}
                       onChange={(e) => setNewForm({ ...newForm, quantity: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">비중 (포트폴리오에서 차지하는 %)</label>
-                    <input
-                      type="number"
-                      placeholder="비중"
-                      value={newForm.value}
-                      onChange={(e) => setNewForm({ ...newForm, value: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -250,7 +238,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               {isEditing ? (
                 <div className="space-y-3 mb-5 p-4 bg-slate-950/50 rounded-2xl border border-blue-500/20">
                   <p className="text-xs text-blue-400 font-bold uppercase tracking-widest">보유 정보 수정</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
                       <input
@@ -266,15 +254,6 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                         type="number"
                         value={editState.quantity}
                         onChange={(e) => setEditState({ ...editState, quantity: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">비중 (포트폴리오에서 차지하는 %)</label>
-                      <input
-                        type="number"
-                        value={editState.value}
-                        onChange={(e) => setEditState({ ...editState, value: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
                     </div>
