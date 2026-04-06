@@ -96,10 +96,10 @@ const StockSearchInput = ({ placeholder = '종목명을 입력하세요 (예: �
             >
               <div>
                 <p className="text-sm font-bold text-white">{stock.name}</p>
-                <p className="text-[10px] text-slate-500 font-mono">{stock.code}</p>
+                <p className="text-xs text-slate-500 font-mono">{stock.code}</p>
               </div>
               {stock.category && (
-                <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-bold shrink-0 ml-2">
+                <span className="text-xs bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-bold shrink-0 ml-2">
                   {stock.category}
                 </span>
               )}

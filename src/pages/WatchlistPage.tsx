@@ -41,11 +41,14 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
 
   const handleRemove = async (e: React.MouseEvent, code: string) => {
     e.stopPropagation();
+    const prev = items;
+    setItems(items.filter(i => i.code !== code)); // optimistic
     try {
       await stockApi.removeFromWatchlist(code);
-      setItems(items.filter(i => i.code !== code));
     } catch (error) {
       console.error('Failed to remove from watchlist:', error);
+      setItems(prev); // rollback on failure
+      alert('삭제에 실패했습니다. 다시 시도해 주세요.');
     }
   };
 
@@ -87,15 +90,16 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
             >
               <button
                 onClick={(e) => handleRemove(e, item.code)}
-                className="absolute top-3 right-3 p-1.5 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                className="absolute top-3 right-3 min-h-[44px] px-3 py-2 flex items-center gap-1 text-slate-400 hover:text-red-500 transition-all rounded-lg"
                 title="관심종목 제거"
               >
-                <Trash2 size={14} />
+                <Trash2 size={16} />
+                <span className="text-xs font-medium">삭제</span>
               </button>
 
               <div className="mb-3">
                 <div className="flex items-center space-x-2 mb-1">
-                  <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-bold rounded uppercase">
+                  <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-xs font-bold rounded uppercase">
                     {item.category || '미분류'}
                   </span>
                 </div>
@@ -105,14 +109,20 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
 
               <div className="flex items-center justify-between pt-3 border-t border-slate-800/50">
                 <div>
-                  <p className="text-[10px] text-slate-500">현재가</p>
+                  <p className="text-xs text-slate-500">현재가</p>
                   <p className="text-lg font-black">{item.price ? `₩${item.price.toLocaleString()}` : '---'}</p>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
+                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
                   item.opinion === '긍정적' || item.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
                   item.opinion === '부정적' || item.opinion === '매도' ? 'bg-red-500/10 text-red-500' :
                   'bg-blue-500/10 text-blue-400'
-                }`}>
+                }`} title={
+                  item.opinion === '긍정적' ? '현재 저평가 상태로 매수 기회일 수 있어요' :
+                  item.opinion === '추가매수' ? '추가 매수를 고려해볼 만한 상태예요' :
+                  item.opinion === '부정적' ? '하락 추세이거나 고평가 상태예요' :
+                  item.opinion === '매도' ? '매도를 고려해볼 만한 상태예요' :
+                  '뚜렷한 방향 없이 보합 상태예요'
+                }>
                   {item.opinion || '중립적'}
                 </span>
               </div>

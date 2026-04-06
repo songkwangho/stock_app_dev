@@ -75,7 +75,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <StatCard
           title="총 자산"
           value={`₩${totalAsset.toLocaleString()}`}
@@ -84,7 +84,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           icon={<Wallet size={24} />}
         />
         <StatCard
-          title="총 평가 손익"
+          title="총 평가 손익 (내가 번/잃은 금액)"
           value={`₩${totalPnL.toLocaleString()}`}
           change={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(1)}%`}
           positive={totalPnL >= 0}
@@ -96,7 +96,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           icon={<LayoutDashboard size={24} />}
         />
         <StatCard
-          title="수익률"
+          title="수익률 (투자 대비 수익)"
           value={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(2)}%`}
           positive={avgProfitRate >= 0}
           icon={<ArrowUpRight size={24} />}
@@ -108,7 +108,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">포트폴리오 수익률 추이</h3>
-              <span className="text-[10px] text-slate-500">최근 20거래일 기준</span>
+              <span className="text-xs text-slate-500">최근 {portfolioHistory.length}거래일 기준</span>
             </div>
             <div className="h-80 w-full">
               {historyLoading ? (
@@ -149,7 +149,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
               <h3 className="text-lg font-semibold">내 보유 종목</h3>
               <button
                 onClick={() => onNavigate('analysis')}
-                className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center space-x-1 transition-colors"
+                className="text-xs text-blue-400 font-bold flex items-center space-x-1 transition-colors px-4 py-3 min-h-[44px]"
               >
                 <span>포트폴리오 관리</span>
                 <ArrowRight size={14} />
@@ -171,16 +171,16 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
                       <div>
                         <div className="flex items-center space-x-2">
                           <p className="text-sm font-bold">{stock.name}</p>
-                          <p className="text-[10px] text-slate-500 bg-slate-900 px-1.5 rounded">{stock.value}%</p>
+                          <p className="text-xs text-slate-500 bg-slate-900 px-1.5 rounded">{stock.value}%</p>
                         </div>
                         <div className="flex items-center space-x-2 flex-wrap">
-                          <p className="text-[10px] text-slate-500">평단: ₩{stock.avgPrice?.toLocaleString()}</p>
-                          {stock.quantity > 0 && <p className="text-[10px] text-slate-500">x {stock.quantity}주</p>}
-                          <p className={`text-[10px] font-bold ${pnlRate >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          <p className="text-xs text-slate-500">평단: ₩{stock.avgPrice?.toLocaleString()}</p>
+                          {stock.quantity > 0 && <p className="text-xs text-slate-500">x {stock.quantity}주</p>}
+                          <p className={`text-xs font-bold ${pnlRate >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                             {pnlRate >= 0 ? '+' : ''}{pnlRate.toFixed(1)}%
                           </p>
                           {stock.quantity > 0 && (
-                            <p className="text-[10px] text-slate-500">
+                            <p className="text-xs text-slate-500">
                               평가: ₩{(stock.currentPrice * stock.quantity).toLocaleString()}
                             </p>
                           )}
@@ -195,7 +195,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
                   <p className="text-slate-600 text-sm mb-3">아직 보유 종목이 없습니다.</p>
                   <button
                     onClick={() => onNavigate('analysis')}
-                    className="text-xs text-blue-400 hover:text-blue-300 font-bold transition-colors"
+                    className="text-xs text-blue-400 font-bold transition-colors px-4 py-3 min-h-[44px]"
                   >
                     내 포트폴리오에서 종목 추가하기 →
                   </button>

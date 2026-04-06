@@ -20,7 +20,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
           <h4 className="font-bold text-base truncate group-hover:text-blue-400 transition-colors">{stock.name}</h4>
-          <p className="text-[10px] text-slate-500 font-mono mt-0.5">{stock.code}</p>
+          <p className="text-xs text-slate-500 font-mono mt-0.5">{stock.code}</p>
         </div>
         <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ml-3">
           <Zap size={11} />
@@ -29,7 +29,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       </div>
 
       {/* Reason */}
-      <p className="text-[12px] text-slate-400 leading-relaxed mb-4 line-clamp-2 flex-grow">
+      <p className="text-xs text-slate-400 leading-relaxed mb-4 line-clamp-2 flex-grow">
         {stock.reason}
       </p>
 
@@ -37,7 +37,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       <div className="bg-slate-950/60 rounded-xl p-3 mb-3">
         <div className="flex items-center justify-between">
           <div className="text-center flex-1">
-            <p className="text-[9px] text-slate-600 uppercase tracking-widest mb-1">현재가</p>
+            <p className="text-xs text-slate-600 uppercase tracking-widest mb-1">현재가</p>
             <p className="text-sm font-bold text-white">
               {stock.currentPrice != null ? `₩${stock.currentPrice.toLocaleString()}` : '---'}
             </p>
@@ -46,7 +46,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
             <ArrowRight size={14} className="text-slate-600" />
           </div>
           <div className="text-center flex-1">
-            <p className="text-[9px] text-emerald-500/70 uppercase tracking-widest mb-1">적정가</p>
+            <p className="text-xs text-emerald-500/70 uppercase tracking-widest mb-1">적정가 (전문가 예상 가격)</p>
             <p className="text-sm font-bold text-emerald-400">
               ₩{stock.fairPrice?.toLocaleString()}
             </p>
@@ -55,7 +55,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
         {upside && (
           <div className="mt-2 pt-2 border-t border-slate-800/50 flex items-center justify-center space-x-1.5">
             <TrendingUp size={12} className="text-emerald-500" />
-            <span className="text-xs font-bold text-emerald-400">+{upside}% 상승 여력</span>
+            <span className="text-xs font-bold text-emerald-400">+{upside}% 상승 여력 (앞으로 오를 수 있는 %)</span>
           </div>
         )}
       </div>
@@ -63,7 +63,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       {/* Footer: Opinion Badge */}
       <div className="flex items-center justify-between">
         {stock.opinion && (
-          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
             stock.opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
             stock.opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
             'bg-slate-500/10 text-slate-400'
@@ -71,7 +71,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
             {stock.opinion}
           </span>
         )}
-        <span className="text-[10px] text-slate-600 group-hover:text-blue-400 transition-colors font-semibold">
+        <span className="text-xs text-slate-600 group-hover:text-blue-400 transition-colors font-semibold">
           상세 분석 →
         </span>
       </div>

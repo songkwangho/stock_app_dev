@@ -110,10 +110,10 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 shrink-0 ${
+          className={`px-4 py-3 min-h-[44px] rounded-xl text-xs font-bold transition-all flex items-center space-x-2 shrink-0 ${
             showAddForm
               ? 'bg-slate-800 text-slate-400 border border-slate-700'
-              : 'bg-blue-600 text-white hover:bg-blue-500'
+              : 'bg-blue-600 text-white active:bg-blue-500'
           }`}
         >
           {showAddForm ? <ChevronUp size={14} /> : <Plus size={14} />}
@@ -123,24 +123,24 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
 
       {/* Summary Stats */}
       {holdings.length > 0 && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-2xl font-black text-blue-400">{holdings.length}</p>
-            <p className="text-[10px] text-slate-500 mt-1">보유 종목 수</p>
+            <p className="text-xs text-slate-500 mt-1">보유 종목 수</p>
           </div>
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-lg font-black text-white">₩{totalInvested.toLocaleString()}</p>
-            <p className="text-[10px] text-slate-500 mt-1">총 투자금액</p>
+            <p className="text-xs text-slate-500 mt-1">총 투자금액</p>
           </div>
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-lg font-black text-white">₩{totalCurrent.toLocaleString()}</p>
-            <p className="text-[10px] text-slate-500 mt-1">총 평가금액</p>
+            <p className="text-xs text-slate-500 mt-1">총 평가금액 (현재 가치)</p>
           </div>
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className={`text-lg font-black ${totalProfitRate >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {totalProfitRate >= 0 ? '+' : ''}{totalProfitRate.toFixed(2)}%
             </p>
-            <p className="text-[10px] text-slate-500 mt-1">총 수익률</p>
+            <p className="text-xs text-slate-500 mt-1">총 수익률</p>
           </div>
         </div>
       )}
@@ -165,50 +165,51 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                   <span className="text-xs text-blue-400 bg-blue-500/10 px-3 py-1.5 rounded-lg font-bold">
                     {newStock.name} ({newStock.code})
                   </span>
-                  <button onClick={() => { setNewStock(null); setSearchResetKey(k => k + 1); }} className="text-slate-600 hover:text-red-400">
+                  <button onClick={() => { setNewStock(null); setSearchResetKey(k => k + 1); }} className="text-red-400 active:text-red-300 px-2 py-1 min-h-[44px] flex items-center space-x-1">
                     <X size={14} />
+                    <span className="text-xs">취소</span>
                   </button>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block">매수가 (원)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
                     <input
                       type="number"
                       placeholder="매수가"
                       value={newForm.avgPrice}
                       onChange={(e) => setNewForm({ ...newForm, avgPrice: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
-                  <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block">수량 (주)</label>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">수량 (주)</label>
                     <input
                       type="number"
                       placeholder="수량"
                       value={newForm.quantity}
                       onChange={(e) => setNewForm({ ...newForm, quantity: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
-                  <div className="w-24">
-                    <label className="text-[10px] text-slate-500 mb-1 block">비중 (%)</label>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">비중 (포트폴리오에서 차지하는 %)</label>
                     <input
                       type="number"
                       placeholder="비중"
                       value={newForm.value}
                       onChange={(e) => setNewForm({ ...newForm, value: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
-                  <div className="pt-4">
-                    <button
-                      onClick={handleAdd}
-                      disabled={!newForm.avgPrice}
-                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-colors"
-                    >
-                      추가
-                    </button>
-                  </div>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={handleAdd}
+                    disabled={!newForm.avgPrice}
+                    className="bg-blue-600 active:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-5 py-3 min-h-[44px] rounded-xl text-xs font-bold transition-colors w-full sm:w-auto"
+                  >
+                    추가
+                  </button>
                 </div>
               </div>
             )}
@@ -225,7 +226,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
           const evalAmount = (stock.currentPrice || 0) * (stock.quantity || 0);
 
           return (
-            <div key={stock.code} className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 hover:border-blue-500/30 transition-all group">
+            <div key={stock.code} className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 border-l-blue-500/30 border-l-2 transition-all group">
               {/* Header */}
               <div className="flex justify-between items-start mb-5">
                 <div className="flex items-center space-x-4 cursor-pointer" onClick={() => onDetailClick({ ...stock, category: '보유 종목' })}>
@@ -233,12 +234,12 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     {stock.name.charAt(0)}
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold group-hover:text-blue-400 transition-colors">{stock.name}</h3>
+                    <h3 className="text-lg font-bold text-blue-400 transition-colors">{stock.name}</h3>
                     <p className="text-xs text-slate-500 font-mono">{stock.code}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">수익률</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">수익률</p>
                   <p className={`text-xl font-black ${parseFloat(profitRate) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                     {parseFloat(profitRate) >= 0 ? '+' : ''}{profitRate}%
                   </p>
@@ -248,43 +249,44 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               {/* Info Grid */}
               {isEditing ? (
                 <div className="space-y-3 mb-5 p-4 bg-slate-950/50 rounded-2xl border border-blue-500/20">
-                  <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">보유 정보 수정</p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <p className="text-xs text-blue-400 font-bold uppercase tracking-widest">보유 정보 수정</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-[10px] text-slate-500 mb-1 block">매수가 (원)</label>
+                      <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
                       <input
                         type="number"
                         value={editState.avgPrice}
                         onChange={(e) => setEditState({ ...editState, avgPrice: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-500 mb-1 block">수량 (주)</label>
+                      <label className="text-xs text-slate-500 mb-1 block">수량 (주)</label>
                       <input
                         type="number"
                         value={editState.quantity}
                         onChange={(e) => setEditState({ ...editState, quantity: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-500 mb-1 block">비중 (%)</label>
+                      <label className="text-xs text-slate-500 mb-1 block">비중 (포트폴리오에서 차지하는 %)</label>
                       <input
                         type="number"
                         value={editState.value}
                         onChange={(e) => setEditState({ ...editState, value: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
                   <div className="flex justify-end space-x-2 pt-1">
-                    <button onClick={() => setEditingCode(null)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg transition-colors">
+                    <button onClick={() => setEditingCode(null)} className="px-4 py-3 min-h-[44px] text-xs text-slate-400 rounded-lg transition-colors flex items-center space-x-1">
                       <X size={14} />
+                      <span>취소</span>
                     </button>
                     <button
                       onClick={() => handleUpdate(stock)}
-                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center space-x-1"
+                      className="px-4 py-3 min-h-[44px] bg-blue-600 active:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center space-x-1"
                     >
                       <Check size={12} />
                       <span>저장</span>
@@ -294,19 +296,19 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               ) : (
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">
-                    <p className="text-[10px] text-slate-500 mb-1">매수가</p>
+                    <p className="text-xs text-slate-500 mb-1">매수가 (1주당 산 가격)</p>
                     <p className="text-sm font-bold">₩{stock.avgPrice?.toLocaleString()}</p>
                   </div>
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">
-                    <p className="text-[10px] text-slate-500 mb-1">현재가</p>
+                    <p className="text-xs text-slate-500 mb-1">현재가</p>
                     <p className="text-sm font-bold">₩{stock.currentPrice != null ? stock.currentPrice.toLocaleString() : '---'}</p>
                   </div>
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">
-                    <p className="text-[10px] text-slate-500 mb-1">수량</p>
+                    <p className="text-xs text-slate-500 mb-1">수량</p>
                     <p className="text-sm font-bold">{stock.quantity || 0}주</p>
                   </div>
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">
-                    <p className="text-[10px] text-slate-500 mb-1">평가금액</p>
+                    <p className="text-xs text-slate-500 mb-1">평가금액 (현재 가치)</p>
                     <p className="text-sm font-bold">₩{evalAmount.toLocaleString()}</p>
                   </div>
                 </div>
@@ -316,7 +318,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               <div className="flex space-x-2">
                 <button
                   onClick={() => onDetailClick({ ...stock, category: '보유 종목' })}
-                  className="flex-1 py-2.5 bg-slate-950 hover:bg-blue-600 text-slate-300 hover:text-white border border-slate-800 hover:border-blue-500 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2"
+                  className="flex-1 py-3 min-h-[44px] bg-slate-950 active:bg-blue-600 text-slate-300 active:text-white border border-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2"
                 >
                   <TrendingUp size={14} />
                   <span>상세 분석</span>
@@ -324,7 +326,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                 {!isEditing && (
                   <button
                     onClick={() => startEdit(stock)}
-                    className="py-2.5 px-4 bg-slate-950 hover:bg-amber-600 text-slate-400 hover:text-white border border-slate-800 hover:border-amber-500 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
+                    className="py-3 px-4 min-h-[44px] bg-slate-950 active:bg-amber-600 text-amber-400 active:text-white border border-slate-800 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
                   >
                     <Pencil size={12} />
                     <span>수정</span>
@@ -332,9 +334,10 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                 )}
                 <button
                   onClick={() => handleDelete(stock)}
-                  className="py-2.5 px-3 bg-slate-950 hover:bg-red-600 text-slate-500 hover:text-white border border-slate-800 hover:border-red-500 rounded-xl text-xs transition-all"
+                  className="py-3 px-4 min-h-[44px] bg-slate-950 active:bg-red-600 text-red-400 active:text-white border border-slate-800 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
                 >
                   <Trash2 size={14} />
+                  <span>삭제</span>
                 </button>
               </div>
             </div>

@@ -1,6 +1,38 @@
 import axios from 'axios';
+import { useToastStore } from '../stores/useToastStore';
 
 const API_BASE_URL = 'http://localhost:3001/api';
+
+// Device-based anonymous identification
+function getDeviceId(): string {
+    let id = localStorage.getItem('device_id');
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem('device_id', id);
+    }
+    return id;
+}
+
+// Attach X-Device-Id header to every request
+axios.interceptors.request.use((config) => {
+    config.headers['X-Device-Id'] = getDeviceId();
+    return config;
+});
+
+// Global error toast on API failure
+axios.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        // Skip toast for health check (expected to fail sometimes) and search (too noisy)
+        const url = error.config?.url || '';
+        const silent = url.includes('/health') || url.includes('/search') || url.includes('/unread-count');
+        if (!silent) {
+            const msg = error.response?.data?.error || '서버와 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+            useToastStore.getState().addToast(msg, 'error');
+        }
+        return Promise.reject(error);
+    }
+);
 
 export const stockApi = {
     // Get current price
@@ -127,5 +159,10 @@ export const stockApi = {
     getChartData: async (code: string, timeframe: 'weekly' | 'monthly') => {
         const response = await axios.get(`${API_BASE_URL}/stock/${code}/chart/${timeframe}`);
         return response.data;
+    },
+    // Health check
+    getHealth: async () => {
+        const response = await axios.get(`${API_BASE_URL}/health`, { timeout: 6000 });
+        return response.data as { api: boolean; database: boolean; lastSync: string | null };
     }
 };

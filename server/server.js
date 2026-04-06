@@ -20,6 +20,20 @@ app.use(cors());
 app.use(express.json());
 app.use('/charts', express.static(path.join(__dirname, '..', 'public', 'charts')));
 
+// Device ID helper: extract from X-Device-Id header
+function getDeviceId(req) {
+    return req.headers['x-device-id'] || null;
+}
+
+function requireDeviceId(req, res) {
+    const deviceId = getDeviceId(req);
+    if (!deviceId) {
+        res.status(400).json({ error: 'X-Device-Id header is required' });
+        return null;
+    }
+    return deviceId;
+}
+
 // --- In-memory cache with TTL ---
 const stockCache = new Map(); // code -> { data, timestamp }
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
@@ -60,11 +74,13 @@ db.prepare(`
 
 db.prepare(`
   CREATE TABLE IF NOT EXISTS holding_stocks (
-    code TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL DEFAULT 'default',
+    code TEXT NOT NULL,
     avg_price INTEGER,
     weight INTEGER,
     quantity INTEGER DEFAULT 0,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (device_id, code),
     FOREIGN KEY (code) REFERENCES stocks (code)
   )
 `).run();
@@ -119,6 +135,7 @@ db.prepare(`
 db.prepare(`
   CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL DEFAULT 'default',
     code TEXT NOT NULL,
     name TEXT,
     type TEXT NOT NULL,
@@ -130,8 +147,10 @@ db.prepare(`
 
 db.prepare(`
   CREATE TABLE IF NOT EXISTS watchlist (
-    code TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL DEFAULT 'default',
+    code TEXT NOT NULL,
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (device_id, code),
     FOREIGN KEY (code) REFERENCES stocks (code)
   )
 `).run();
@@ -144,10 +163,67 @@ try {
     }
 } catch (e) { console.error('Migration (holding_stocks.quantity):', e.message); }
 
+// Migration: add device_id to holding_stocks (recreate table if PK changed)
+try {
+    const cols = db.prepare("PRAGMA table_info(holding_stocks)").all();
+    if (!cols.some(c => c.name === 'device_id')) {
+        console.log('Migrating holding_stocks: adding device_id column...');
+        db.exec(`
+            CREATE TABLE holding_stocks_new (
+                device_id TEXT NOT NULL DEFAULT 'default',
+                code TEXT NOT NULL,
+                avg_price INTEGER,
+                weight INTEGER,
+                quantity INTEGER DEFAULT 0,
+                last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (device_id, code),
+                FOREIGN KEY (code) REFERENCES stocks (code)
+            );
+            INSERT INTO holding_stocks_new (device_id, code, avg_price, weight, quantity, last_updated)
+                SELECT 'default', code, avg_price, weight, quantity, last_updated FROM holding_stocks;
+            DROP TABLE holding_stocks;
+            ALTER TABLE holding_stocks_new RENAME TO holding_stocks;
+        `);
+        console.log('holding_stocks migration complete.');
+    }
+} catch (e) { console.error('Migration (holding_stocks.device_id):', e.message); }
+
+// Migration: add device_id to alerts
+try {
+    const cols = db.prepare("PRAGMA table_info(alerts)").all();
+    if (!cols.some(c => c.name === 'device_id')) {
+        console.log('Migrating alerts: adding device_id column...');
+        db.prepare("ALTER TABLE alerts ADD COLUMN device_id TEXT NOT NULL DEFAULT 'default'").run();
+        console.log('alerts migration complete.');
+    }
+} catch (e) { console.error('Migration (alerts.device_id):', e.message); }
+
+// Migration: add device_id to watchlist (recreate table for PK change)
+try {
+    const cols = db.prepare("PRAGMA table_info(watchlist)").all();
+    if (!cols.some(c => c.name === 'device_id')) {
+        console.log('Migrating watchlist: adding device_id column...');
+        db.exec(`
+            CREATE TABLE watchlist_new (
+                device_id TEXT NOT NULL DEFAULT 'default',
+                code TEXT NOT NULL,
+                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (device_id, code),
+                FOREIGN KEY (code) REFERENCES stocks (code)
+            );
+            INSERT INTO watchlist_new (device_id, code, added_at)
+                SELECT 'default', code, added_at FROM watchlist;
+            DROP TABLE watchlist;
+            ALTER TABLE watchlist_new RENAME TO watchlist;
+        `);
+        console.log('watchlist migration complete.');
+    }
+} catch (e) { console.error('Migration (watchlist.device_id):', e.message); }
+
 // Database Indices for query performance
 db.prepare('CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date)').run();
 db.prepare('CREATE INDEX IF NOT EXISTS idx_stocks_category ON stocks(category)').run();
-db.prepare('CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(read, created_at)').run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_alerts_device_read ON alerts(device_id, read, created_at)').run();
 
 // Migration: Handle structural changes
 try {
@@ -165,9 +241,9 @@ try {
     const existingHoldings = db.prepare('SELECT code, avg_price, weight FROM stocks WHERE avg_price IS NOT NULL').all();
     for (const h of existingHoldings) {
         db.prepare(`
-            INSERT INTO holding_stocks (code, avg_price, weight)
-            VALUES (?, ?, ?)
-            ON CONFLICT(code) DO UPDATE SET
+            INSERT INTO holding_stocks (device_id, code, avg_price, weight)
+            VALUES ('default', ?, ?, ?)
+            ON CONFLICT(device_id, code) DO UPDATE SET
                 avg_price = excluded.avg_price,
                 weight = excluded.weight
         `).run(h.code, h.avg_price, h.weight);
@@ -464,13 +540,29 @@ let browserInstance = null;
 
 async function getBrowser() {
     if (!browserInstance || !browserInstance.connected) {
-        browserInstance = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
+        try {
+            browserInstance = await puppeteer.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            });
+        } catch (e) {
+            console.error('Puppeteer launch failed:', e.message);
+            browserInstance = null;
+            throw e;
+        }
     }
     return browserInstance;
 }
+
+// Prevent Puppeteer cleanup errors from crashing the server
+process.on('unhandledRejection', (reason) => {
+    const msg = reason?.message || String(reason);
+    if (msg.includes('EBUSY') || msg.includes('lockfile') || msg.includes('puppeteer')) {
+        console.error('Suppressed Puppeteer cleanup error:', msg);
+    } else {
+        console.error('Unhandled Rejection:', msg);
+    }
+});
 
 async function captureChart(code) {
     const outputPath = path.join(chartsDir, `${code}.png`);
@@ -513,53 +605,73 @@ syncAllStocks();
 scheduleDaily8AM();
 
 // Alert generation: check conditions and create alerts (avoid duplicates within 24h)
-function generateAlerts(code, name, price, sma5, targetPrice, opinion, isHolding) {
+function generateAlerts(code, name, price, sma5, targetPrice, opinion) {
+    // Generate alerts for all device_ids that hold this stock
+    const holders = db.prepare('SELECT DISTINCT device_id FROM holding_stocks WHERE code = ?').all(code);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const hasDuplicate = (type) => {
-        return db.prepare(
-            'SELECT 1 FROM alerts WHERE code = ? AND type = ? AND created_at > ?'
-        ).get(code, type, oneDayAgo);
-    };
+    for (const { device_id } of holders) {
+        const hasDuplicate = (type) => {
+            return db.prepare(
+                'SELECT 1 FROM alerts WHERE device_id = ? AND code = ? AND type = ? AND created_at > ?'
+            ).get(device_id, code, type, oneDayAgo);
+        };
 
-    // Holding alerts
-    if (isHolding && sma5) {
-        if (price < sma5 && !hasDuplicate('sma5_break')) {
-            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
-                code, name, 'sma5_break',
-                `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원)을 하향 이탈했습니다. 리스크 관리가 필요합니다.`
-            );
+        // Holding alerts
+        if (sma5) {
+            if (price < sma5 && !hasDuplicate('sma5_break')) {
+                db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
+                    device_id, code, name, 'sma5_break',
+                    `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원)을 하향 이탈했습니다. 리스크 관리가 필요합니다.`
+                );
+            }
+            if (price >= sma5 * 0.99 && price <= sma5 * 1.01 && !hasDuplicate('sma5_touch')) {
+                db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
+                    device_id, code, name, 'sma5_touch',
+                    `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있습니다. 추가매수 타점을 검토해 보세요.`
+                );
+            }
         }
-        if (price >= sma5 * 0.99 && price <= sma5 * 1.01 && !hasDuplicate('sma5_touch')) {
-            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
-                code, name, 'sma5_touch',
-                `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있습니다. 추가매수 타점을 검토해 보세요.`
+
+        if (opinion === '매도' && !hasDuplicate('sell_signal')) {
+            db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
+                device_id, code, name, 'sell_signal',
+                `${name}(${code}) 분석 의견이 "매도"로 전환되었습니다. 포지션 점검이 필요합니다.`
             );
         }
     }
 
-    // Target price alerts
+    // Target price alerts are not per-device (general alerts for any watcher)
+    // Generate for all devices that have this stock in watchlist or holdings
+    const watchers = db.prepare(`
+        SELECT DISTINCT device_id FROM (
+            SELECT device_id FROM holding_stocks WHERE code = ?
+            UNION
+            SELECT device_id FROM watchlist WHERE code = ?
+        )
+    `).all(code, code);
+
     if (targetPrice && price > 0) {
-        if (price >= targetPrice * 0.95 && !hasDuplicate('target_near')) {
-            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
-                code, name, 'target_near',
-                `${name}(${code}) 현재가(${price.toLocaleString()}원)가 목표가(${targetPrice.toLocaleString()}원)에 근접했습니다.`
-            );
-        }
-        if (price < targetPrice * 0.7 && !hasDuplicate('undervalued')) {
-            db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
-                code, name, 'undervalued',
-                `${name}(${code}) 현재가가 목표가 대비 30% 이상 저평가 상태입니다. 매수 기회를 검토해 보세요.`
-            );
-        }
-    }
+        for (const { device_id } of watchers) {
+            const hasDuplicate = (type) => {
+                return db.prepare(
+                    'SELECT 1 FROM alerts WHERE device_id = ? AND code = ? AND type = ? AND created_at > ?'
+                ).get(device_id, code, type, oneDayAgo);
+            };
 
-    // Opinion change alert
-    if (opinion === '매도' && isHolding && !hasDuplicate('sell_signal')) {
-        db.prepare('INSERT INTO alerts (code, name, type, message) VALUES (?, ?, ?, ?)').run(
-            code, name, 'sell_signal',
-            `${name}(${code}) 분석 의견이 "매도"로 전환되었습니다. 포지션 점검이 필요합니다.`
-        );
+            if (price >= targetPrice * 0.95 && !hasDuplicate('target_near')) {
+                db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
+                    device_id, code, name, 'target_near',
+                    `${name}(${code}) 현재가(${price.toLocaleString()}원)가 목표가(${targetPrice.toLocaleString()}원)에 근접했습니다.`
+                );
+            }
+            if (price < targetPrice * 0.7 && !hasDuplicate('undervalued')) {
+                db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
+                    device_id, code, name, 'undervalued',
+                    `${name}(${code}) 현재가가 목표가 대비 30% 이상 저평가 상태입니다. 매수 기회를 검토해 보세요.`
+                );
+            }
+        }
     }
 }
 
@@ -756,7 +868,7 @@ async function getStockData(code, fallbackName = null) {
         const sma5 = getSMA(5);
         const sma20 = getSMA(20);
 
-        const isHolding = db.prepare('SELECT 1 FROM holding_stocks WHERE code = ?').get(code);
+        const isHolding = db.prepare('SELECT 1 FROM holding_stocks WHERE code = ? LIMIT 1').get(code);
 
         let analysis = `시장 전체 수급 흐름과 기술적 지표가 우호적인 환경을 조성하고 있습니다.`;
         let advice = `현재 시장 환경을 고려할 때 분할 매수 관점에서 접근이 유효해 보입니다.`;
@@ -839,7 +951,7 @@ async function getStockData(code, fallbackName = null) {
         console.log(`Saving analysis for ${code} with chartPath: ${chartPath}`);
 
         // Generate alerts for significant events
-        generateAlerts(code, nameToSave, latestPrice, sma5, targetPrice, opinion, isHolding);
+        generateAlerts(code, nameToSave, latestPrice, sma5, targetPrice, opinion);
 
         db.prepare(`
             INSERT INTO stock_analysis (code, analysis, advice, opinion, toss_url, chart_path, created_at)
@@ -924,14 +1036,17 @@ app.post('/api/stock/:code/refresh', async (req, res) => {
     }
 });
 
-// API Endpoints for Holdings (Portfolio)
+// API Endpoints for Holdings (Portfolio) - device_id scoped
 app.get('/api/holdings', async (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
         const holdings = db.prepare(`
             SELECT s.*, h.avg_price, h.weight, h.quantity
             FROM stocks s
             JOIN holding_stocks h ON s.code = h.code
-        `).all();
+            WHERE h.device_id = ?
+        `).all(deviceId);
         res.json(holdings);
     } catch (error) {
         console.error('Holdings GET Error:', error.message);
@@ -940,27 +1055,29 @@ app.get('/api/holdings', async (req, res) => {
 });
 
 app.post('/api/holdings', async (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     const { code, name, avgPrice, weight, quantity } = req.body;
     try {
         // Ensure master stock data exists
         const stockData = await getStockData(code, name);
 
         db.prepare(`
-            INSERT INTO holding_stocks (code, avg_price, weight, quantity, last_updated)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(code) DO UPDATE SET
+            INSERT INTO holding_stocks (device_id, code, avg_price, weight, quantity, last_updated)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(device_id, code) DO UPDATE SET
                 avg_price = excluded.avg_price,
                 weight = excluded.weight,
                 quantity = excluded.quantity,
                 last_updated = CURRENT_TIMESTAMP
-        `).run(code, avgPrice, weight, quantity || 0);
+        `).run(deviceId, code, avgPrice, weight, quantity || 0);
 
         const updated = db.prepare(`
             SELECT s.*, h.avg_price, h.weight, h.quantity
             FROM stocks s
             JOIN holding_stocks h ON s.code = h.code
-            WHERE s.code = ?
-        `).get(code);
+            WHERE h.device_id = ? AND s.code = ?
+        `).get(deviceId, code);
         res.json(updated);
     } catch (error) {
         console.error('Holdings POST Error:', error.message);
@@ -969,9 +1086,11 @@ app.post('/api/holdings', async (req, res) => {
 });
 
 app.delete('/api/holdings/:code', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     const { code } = req.params;
     try {
-        db.prepare('DELETE FROM holding_stocks WHERE code = ?').run(code);
+        db.prepare('DELETE FROM holding_stocks WHERE device_id = ? AND code = ?').run(deviceId, code);
         res.json({ success: true });
     } catch (error) {
         console.error('Holdings DELETE Error:', error.message);
@@ -1047,7 +1166,8 @@ app.delete('/api/stocks/:code', (req, res) => {
             // Delete from all dependent tables first due to FK constraints
             db.prepare('DELETE FROM recommended_stocks WHERE code = ?').run(stockCode);
             db.prepare('DELETE FROM stock_analysis WHERE code = ?').run(stockCode);
-            db.prepare('DELETE FROM holding_stocks WHERE code = ?').run(stockCode);
+            db.prepare('DELETE FROM holding_stocks WHERE code = ?').run(stockCode); // all devices
+            db.prepare('DELETE FROM watchlist WHERE code = ?').run(stockCode); // all devices
             db.prepare('DELETE FROM stock_history WHERE code = ?').run(stockCode);
             const result = db.prepare('DELETE FROM stocks WHERE code = ?').run(stockCode);
             return result.changes;
@@ -1098,9 +1218,12 @@ app.get('/api/recommendations', async (req, res) => {
             }
         }
 
-        // 4. Exclude Holdings
-        const holdings = db.prepare('SELECT code FROM holding_stocks').all().map(h => h.code);
-        const nonHoldings = combined.filter(c => !holdings.includes(c.code));
+        // 4. Exclude Holdings (device-specific)
+        const deviceId = getDeviceId(req);
+        const holdingCodes = deviceId
+            ? db.prepare('SELECT code FROM holding_stocks WHERE device_id = ?').all(deviceId).map(h => h.code)
+            : [];
+        const nonHoldings = combined.filter(c => !holdingCodes.includes(c.code));
 
         const results = await Promise.all(nonHoldings.map(async (rec) => {
             const stockData = await getStockData(rec.code, rec.name);
@@ -1144,8 +1267,10 @@ app.get('/api/recommendations', async (req, res) => {
     }
 });
 
-// Portfolio History: aggregate daily portfolio value via single JOIN query
+// Portfolio History: aggregate daily portfolio value via single JOIN query - device_id scoped
 app.get('/api/holdings/history', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
         const result = db.prepare(`
             SELECT
@@ -1154,13 +1279,13 @@ app.get('/api/holdings/history', (req, res) => {
                 CAST(SUM(h.avg_price * h.weight) AS INTEGER) as cost
             FROM stock_history sh
             JOIN holding_stocks h ON sh.code = h.code
-            WHERE sh.date IN (
+            WHERE h.device_id = ? AND sh.date IN (
                 SELECT DISTINCT date FROM stock_history
                 ORDER BY date DESC LIMIT 20
             )
             GROUP BY sh.date
             ORDER BY sh.date
-        `).all();
+        `).all(deviceId);
 
         const mapped = result.map(d => ({
             date: d.date,
@@ -1206,12 +1331,14 @@ app.get('/api/stock/:code/volatility', (req, res) => {
     }
 });
 
-// --- Alerts API ---
+// --- Alerts API --- device_id scoped
 app.get('/api/alerts', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
         const alerts = db.prepare(
-            'SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50'
-        ).all();
+            'SELECT * FROM alerts WHERE device_id = ? ORDER BY created_at DESC LIMIT 50'
+        ).all(deviceId);
         res.json(alerts);
     } catch (error) {
         console.error('Alerts GET Error:', error.message);
@@ -1220,8 +1347,10 @@ app.get('/api/alerts', (req, res) => {
 });
 
 app.get('/api/alerts/unread-count', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
-        const result = db.prepare('SELECT COUNT(*) as count FROM alerts WHERE read = 0').get();
+        const result = db.prepare('SELECT COUNT(*) as count FROM alerts WHERE device_id = ? AND read = 0').get(deviceId);
         res.json({ count: result.count });
     } catch (error) {
         res.status(500).json({ error: 'Failed to count alerts' });
@@ -1229,8 +1358,10 @@ app.get('/api/alerts/unread-count', (req, res) => {
 });
 
 app.post('/api/alerts/read', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
-        db.prepare('UPDATE alerts SET read = 1 WHERE read = 0').run();
+        db.prepare('UPDATE alerts SET read = 1 WHERE device_id = ? AND read = 0').run(deviceId);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to mark alerts as read' });
@@ -1238,8 +1369,10 @@ app.post('/api/alerts/read', (req, res) => {
 });
 
 app.delete('/api/alerts/:id', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
-        db.prepare('DELETE FROM alerts WHERE id = ?').run(req.params.id);
+        db.prepare('DELETE FROM alerts WHERE id = ? AND device_id = ?').run(req.params.id, deviceId);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete alert' });
@@ -1284,16 +1417,19 @@ app.get('/api/market/indices', async (req, res) => {
     }
 });
 
-// --- Watchlist API ---
+// --- Watchlist API --- device_id scoped
 app.get('/api/watchlist', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
         const items = db.prepare(`
             SELECT s.code, s.name, s.category, s.price, a.opinion, w.added_at
             FROM watchlist w
             JOIN stocks s ON w.code = s.code
             LEFT JOIN stock_analysis a ON s.code = a.code
+            WHERE w.device_id = ?
             ORDER BY w.added_at DESC
-        `).all();
+        `).all(deviceId);
         res.json(items);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch watchlist' });
@@ -1301,11 +1437,16 @@ app.get('/api/watchlist', (req, res) => {
 });
 
 app.post('/api/watchlist', async (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     const { code } = req.body;
     if (!code) return res.status(400).json({ error: 'Code is required' });
     try {
         await getStockData(code);
-        db.prepare('INSERT OR IGNORE INTO watchlist (code) VALUES (?)').run(code);
+        db.prepare(`
+            INSERT INTO watchlist (device_id, code) VALUES (?, ?)
+            ON CONFLICT(device_id, code) DO NOTHING
+        `).run(deviceId, code);
         const item = db.prepare(`
             SELECT s.code, s.name, s.category, s.price, a.opinion
             FROM stocks s
@@ -1319,8 +1460,10 @@ app.post('/api/watchlist', async (req, res) => {
 });
 
 app.delete('/api/watchlist/:code', (req, res) => {
+    const deviceId = requireDeviceId(req, res);
+    if (!deviceId) return;
     try {
-        db.prepare('DELETE FROM watchlist WHERE code = ?').run(req.params.code);
+        db.prepare('DELETE FROM watchlist WHERE device_id = ? AND code = ?').run(deviceId, req.params.code);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to remove from watchlist' });
@@ -1632,6 +1775,32 @@ app.get('/api/stock/:code/chart/:timeframe', async (req, res) => {
         console.error('Chart Timeframe Error:', error.message);
         res.json([]);
     }
+});
+
+// --- Health Check API ---
+app.get('/api/health', async (req, res) => {
+    const status = { api: false, database: false, lastSync: null };
+    try {
+        // Check database
+        const dbCheck = db.prepare('SELECT COUNT(*) as count FROM stocks').get();
+        status.database = dbCheck.count >= 0;
+
+        // Check Naver API connectivity
+        const testResp = await axios.get('https://finance.naver.com/item/main.naver?code=005930', {
+            timeout: 5000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        status.api = testResp.status === 200;
+    } catch {
+        // api stays false
+    }
+
+    try {
+        const latest = db.prepare('SELECT MAX(last_updated) as ts FROM stocks WHERE last_updated IS NOT NULL').get();
+        status.lastSync = latest?.ts || null;
+    } catch { /* ignore */ }
+
+    res.json(status);
 });
 
 app.listen(PORT, () => {

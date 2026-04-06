@@ -55,6 +55,9 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
             setLoading(true);
             stockApi.getRecommendations().then(data => {
               setRecommendations(data);
+            }).catch(error => {
+              console.error('Recommendations refresh failed:', error);
+            }).finally(() => {
               setLoading(false);
             });
           }}
@@ -70,17 +73,17 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-2xl font-black text-blue-400">{recommendations.length}</p>
-            <p className="text-[10px] text-slate-500 mt-1">추천 종목 수</p>
+            <p className="text-xs text-slate-500 mt-1">추천 종목 수</p>
           </div>
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-2xl font-black text-emerald-400">{categories.length}</p>
-            <p className="text-[10px] text-slate-500 mt-1">업종 분야</p>
+            <p className="text-xs text-slate-500 mt-1">업종 분야</p>
           </div>
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
             <p className="text-2xl font-black text-yellow-400">
               {Math.round(recommendations.reduce((a, r) => a + r.score, 0) / recommendations.length)}
             </p>
-            <p className="text-[10px] text-slate-500 mt-1">평균 추천 점수</p>
+            <p className="text-xs text-slate-500 mt-1">평균 추천 점수</p>
           </div>
         </div>
       )}
@@ -90,7 +93,7 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setActiveCategory(null)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
               activeCategory === null
                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
                 : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
@@ -104,7 +107,7 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
               <button
                 key={cat}
                 onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeCategory === cat
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
                     : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'

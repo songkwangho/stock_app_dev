@@ -93,12 +93,12 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
                     </button>
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-sm font-bold group-hover:text-blue-400 transition-colors pr-6">{stock.name}</p>
-                      <span className="text-[10px] text-slate-500 font-mono">{stock.code}</span>
+                      <span className="text-xs text-slate-500 font-mono">{stock.code}</span>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
                       <div className="flex items-center space-x-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${stock.opinion === '긍정적' || stock.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${stock.opinion === '긍정적' || stock.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
                           stock.opinion === '부정적' || stock.opinion === '매도' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-400'
                           }`}>
                           {stock.opinion || '중립적'}

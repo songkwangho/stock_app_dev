@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  ArrowLeft, RefreshCw, Trash2, Zap, ShieldCheck, Plus, ArrowUpRight, HelpCircle
+  ArrowLeft, RefreshCw, Trash2, Zap, ShieldCheck, Plus, ArrowUpRight
 } from 'lucide-react';
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -52,7 +52,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
   const [volatility, setVolatility] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [indicators, setIndicators] = useState<TechnicalIndicators | null>(null);
-  const [showHelp, setShowHelp] = useState<string | null>(null);
+  // showHelp state removed - help text is now always visible for beginners
   const [news, setNews] = useState<NewsItem[]>([]);
   const [financials, setFinancials] = useState<FinancialData | null>(null);
   const [sectorData, setSectorData] = useState<SectorComparison | null>(null);
@@ -179,7 +179,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
 
   return (
     <div className="animate-in fade-in slide-in-from-left-4 duration-500 space-y-8">
-      <button onClick={onBack} className="flex items-center space-x-2 text-slate-400 hover:text-white transition-colors mb-4">
+      <button onClick={onBack} className="flex items-center space-x-2 text-slate-400 hover:text-white transition-colors mb-4 px-4 py-2.5 min-h-[44px]">
         <ArrowLeft size={20} />
         <span>돌아가기</span>
       </button>
@@ -195,8 +195,9 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   if (window.confirm('이 종목을 전체 목록에서 삭제하시겠습니까?')) {
                     try { await stockApi.deleteStock(stock.code); onBack(); } catch { alert('종목 삭제에 실패했습니다.'); }
                   }
-                }} className="text-slate-500 hover:text-red-500 transition-colors p-1" title="종목 전체 삭제">
+                }} className="flex items-center space-x-1 text-slate-500 hover:text-red-500 transition-colors px-4 py-2.5 min-h-[44px]" title="종목 전체 삭제">
                   <Trash2 size={16} />
+                  <span className="text-xs">삭제</span>
                 </button>
               )}
             </div>
@@ -223,7 +224,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                         weight: String(stock.value || '5'),
                       });
                     }}
-                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold bg-blue-500/10 px-2 py-1 rounded-lg transition-colors"
+                    className="text-xs text-blue-400 hover:text-blue-300 font-bold bg-blue-500/10 px-4 py-2.5 min-h-[44px] rounded-lg transition-colors"
                   >
                     보유 정보 수정
                   </button>
@@ -232,10 +233,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             )}
             {isHolding && editMode && onUpdate && (
               <div className="mt-3 p-4 bg-slate-900/50 border border-blue-500/20 rounded-2xl animate-in fade-in duration-200">
-                <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mb-3">보유 정보 수정</p>
+                <p className="text-xs text-blue-400 font-bold uppercase tracking-widest mb-3">보유 정보 수정</p>
                 <div className="flex items-end space-x-3">
                   <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block">매수가 (원)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">매수가 (원)</label>
                     <input
                       type="number"
                       value={editForm.avgPrice}
@@ -244,7 +245,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[10px] text-slate-500 mb-1 block">수량 (주)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">수량 (주)</label>
                     <input
                       type="number"
                       value={editForm.quantity}
@@ -253,7 +254,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     />
                   </div>
                   <div className="w-24">
-                    <label className="text-[10px] text-slate-500 mb-1 block">비중 (%)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">비중 (%)</label>
                     <input
                       type="number"
                       value={editForm.weight}
@@ -272,13 +273,13 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                       });
                       setEditMode(false);
                     }}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
+                    className="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors min-h-[44px]"
                   >
                     저장
                   </button>
                   <button
                     onClick={() => setEditMode(false)}
-                    className="px-3 py-2 text-slate-500 hover:text-white text-xs rounded-xl transition-colors"
+                    className="px-4 py-3 text-slate-500 hover:text-white text-sm rounded-xl transition-colors min-h-[44px]"
                   >
                     취소
                   </button>
@@ -295,7 +296,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
               <h3 className="text-lg font-semibold mb-6 flex items-center justify-between">
                 <span>토스증권 실시간 차트 캡처</span>
-                <span className="text-[10px] text-slate-500 font-normal">Toss Securities Original Chart</span>
+                <span className="text-xs text-slate-500 font-normal">Toss Securities Original Chart</span>
               </h3>
               {stockDetail?.chartPath ? (
                 <div className="w-full rounded-xl overflow-hidden border border-slate-800 mb-6">
@@ -313,16 +314,11 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {/* Candlestick + Volume Chart */}
             <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
               <h3 className="text-lg font-semibold mb-2 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span>주가 차트</span>
-                  <button onClick={() => setShowHelp(showHelp === 'candle' ? null : 'candle')} className="text-slate-600 hover:text-blue-400">
-                    <HelpCircle size={14} />
-                  </button>
-                </div>
+                <span>주가 차트</span>
                 <div className="flex items-center space-x-1">
                   {(['daily', 'weekly', 'monthly'] as const).map(tf => (
                     <button key={tf} onClick={() => setChartTimeframe(tf)}
-                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                      className={`px-4 py-2.5 min-h-[44px] rounded-lg text-xs font-bold transition-colors ${
                         chartTimeframe === tf ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                       }`}>
                       {tf === 'daily' ? '일봉' : tf === 'weekly' ? '주봉' : '월봉'}
@@ -330,23 +326,21 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   ))}
                 </div>
               </h3>
-              {showHelp === 'candle' && (
-                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-4 text-xs text-blue-300 leading-relaxed">
-                  💡 {helpTexts.candle}
-                </div>
-              )}
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-4 text-xs text-blue-300 leading-relaxed">
+                {helpTexts.candle}
+              </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} domain={[priceMin, priceMax]} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '11px' }}
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[priceMin, priceMax]} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '12px' }}
                       formatter={(value: number, name: string) => {
                         const labels: Record<string, string> = { price: '종가', open: '시가', high: '고가', low: '저가', sma5: '5일 평균', sma20: '20일 평균' };
                         return [`₩${value?.toLocaleString() || '---'}`, labels[name] || name];
                       }} />
-                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px' }} />
+                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
                     {/* Candlestick body as bar */}
                     <Bar dataKey="price" name="종가" shape={<CandlestickBar />} isAnimationActive={false}>
                       {chartData.map((entry, index) => (
@@ -362,20 +356,15 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               {/* Volume Bar */}
               <h4 className="text-sm font-semibold mt-6 mb-2 flex items-center space-x-2">
                 <span className="text-slate-400">거래량</span>
-                <button onClick={() => setShowHelp(showHelp === 'volume' ? null : 'volume')} className="text-slate-600 hover:text-blue-400">
-                  <HelpCircle size={14} />
-                </button>
               </h4>
-              {showHelp === 'volume' && (
-                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-3 text-xs text-blue-300 leading-relaxed">
-                  💡 {helpTexts.volume}
-                </div>
-              )}
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-3 text-xs text-blue-300 leading-relaxed">
+                {helpTexts.volume}
+              </div>
               <div className="h-24 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={volumeData}>
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} hide />
-                    <YAxis stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} hide />
+                    <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                     <Bar dataKey="volume" isAnimationActive={false}>
                       {volumeData.map((entry, index) => (
                         <Cell key={index} fill={entry.isUp ? '#10b98140' : '#ef444440'} />
@@ -389,24 +378,24 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">PER</h4>
+                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PER (주가수익비율)</h4>
                 <p className="text-xl font-bold text-white">{stockDetail?.per ? `${stockDetail.per}배` : '---'}</p>
-                <p className="text-[10px] text-slate-600 mt-1">낮을수록 저평가</p>
+                <p className="text-xs text-slate-600 mt-1">낮을수록 저평가</p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">PBR</h4>
+                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PBR (주가순자산비율)</h4>
                 <p className="text-xl font-bold text-white">{stockDetail?.pbr ? `${stockDetail.pbr}배` : '---'}</p>
-                <p className="text-[10px] text-slate-600 mt-1">1 이하면 자산 대비 저평가</p>
+                <p className="text-xs text-slate-600 mt-1">1 이하면 자산 대비 저평가</p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">ROE</h4>
+                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">ROE (자기자본이익률)</h4>
                 <p className="text-xl font-bold text-white">{stockDetail?.roe ? `${stockDetail.roe}%` : '---'}</p>
-                <p className="text-[10px] text-slate-600 mt-1">높을수록 돈을 잘 버는 회사</p>
+                <p className="text-xs text-slate-600 mt-1">높을수록 수익성 좋음</p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-[10px] font-bold mb-2 text-slate-500 uppercase tracking-widest">목표가</h4>
+                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">목표가</h4>
                 <p className="text-xl font-bold text-emerald-400">{stockDetail?.targetPrice ? `₩${stockDetail.targetPrice.toLocaleString()}` : '---'}</p>
-                <p className="text-[10px] text-slate-600 mt-1">증권사 평균 예상가</p>
+                <p className="text-xs text-slate-600 mt-1">증권사 애널리스트 평균 예상가</p>
               </div>
             </div>
 
@@ -437,21 +426,15 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     <div key={detail.indicator} className="p-4 bg-slate-900/50 rounded-xl border border-slate-800/50">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-bold text-slate-300">{detail.indicator}</h4>
-                        <button onClick={() => setShowHelp(showHelp === detail.indicator ? null : detail.indicator)}
-                          className="text-slate-600 hover:text-blue-400">
-                          <HelpCircle size={12} />
-                        </button>
                       </div>
                       <p className={`text-lg font-black mb-1 ${
                         detail.color === 'green' ? 'text-emerald-400' :
                         detail.color === 'red' ? 'text-red-400' : 'text-blue-400'
                       }`}>{detail.signal}</p>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">{detail.description}</p>
-                      {showHelp === detail.indicator && (
-                        <div className="mt-3 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg text-[11px] text-blue-300 leading-relaxed">
-                          💡 {helpTexts[detail.indicator === 'RSI' ? 'rsi' : detail.indicator === 'MACD' ? 'macd' : 'bollinger']}
-                        </div>
-                      )}
+                      <p className="text-xs text-slate-500 leading-relaxed">{detail.description}</p>
+                      <div className="mt-3 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg text-xs text-blue-300 leading-relaxed">
+                        {helpTexts[detail.indicator === 'RSI' ? 'rsi' : detail.indicator === 'MACD' ? 'macd' : 'bollinger']}
+                      </div>
                       {/* Numeric values */}
                       <div className="mt-2 pt-2 border-t border-slate-800/50">
                         {detail.indicator === 'RSI' && indicators.rsi !== null && (
@@ -460,11 +443,11 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                               <div className={`h-full rounded-full ${indicators.rsi > 70 ? 'bg-red-500' : indicators.rsi < 30 ? 'bg-emerald-500' : 'bg-blue-500'}`}
                                 style={{ width: `${indicators.rsi}%` }} />
                             </div>
-                            <span className="text-[10px] font-bold text-slate-400">{indicators.rsi}</span>
+                            <span className="text-xs font-bold text-slate-400">{indicators.rsi}</span>
                           </div>
                         )}
                         {detail.indicator === 'MACD' && indicators.macd && (
-                          <p className="text-[10px] text-slate-600">MACD {indicators.macd.macdLine.toLocaleString()} / 시그널 {indicators.macd.signal.toLocaleString()}</p>
+                          <p className="text-xs text-slate-600">MACD {indicators.macd.macdLine.toLocaleString()} / 시그널 {indicators.macd.signal.toLocaleString()}</p>
                         )}
                         {detail.indicator === '볼린저밴드' && indicators.bollinger && (
                           <div className="flex items-center space-x-2">
@@ -472,7 +455,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                               <div className={`h-full rounded-full ${indicators.bollinger.percentB > 80 ? 'bg-red-500' : indicators.bollinger.percentB < 20 ? 'bg-emerald-500' : 'bg-blue-500'}`}
                                 style={{ width: `${Math.max(2, Math.min(100, indicators.bollinger.percentB))}%` }} />
                             </div>
-                            <span className="text-[10px] font-bold text-slate-400">{indicators.bollinger.percentB}%</span>
+                            <span className="text-xs font-bold text-slate-400">{indicators.bollinger.percentB}%</span>
                           </div>
                         )}
                       </div>
@@ -484,7 +467,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                 <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800/50 flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-slate-300 mb-1">가격 변동성</h4>
-                    <p className="text-[11px] text-slate-500">숫자가 클수록 가격이 많이 움직여요</p>
+                    <p className="text-xs text-slate-500">숫자가 클수록 가격이 많이 움직여요</p>
                   </div>
                   <p className="text-xl font-bold">{volatility !== null ? `±${volatility}%` : '---'}</p>
                 </div>
@@ -495,21 +478,21 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {stockDetail?.investorData && stockDetail.investorData.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">투자자별 매매동향</h3>
-                <p className="text-[11px] text-slate-500 mb-4">최근 10거래일 동안 개인·외국인·기관이 주식을 사고판 양을 보여줘요</p>
+                <p className="text-xs text-slate-500 mb-4">최근 10거래일 동안 개인·외국인·기관이 주식을 사고판 양을 보여줘요</p>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stockDetail.investorData.slice(-10).map((d) => ({
                       ...d, name: d.date.slice(4, 6) + '/' + d.date.slice(6, 8),
                     }))}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${v > 0 ? '+' : ''}${Math.round(v / 1000)}k`} />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v > 0 ? '+' : ''}${Math.round(v / 1000)}k`} />
                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
-                      <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px' }} />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
                       <ReferenceLine y={0} stroke="#334155" />
-                      <Bar dataKey="individual" name="개인" fill="#facc15" />
-                      <Bar dataKey="foreign" name="외국인" fill="#ec4899" />
-                      <Bar dataKey="institution" name="기관" fill="#6366f1" />
+                      <Bar dataKey="individual" name="개인 (일반 투자자)" fill="#facc15" />
+                      <Bar dataKey="foreign" name="외국인 (해외 투자자)" fill="#ec4899" />
+                      <Bar dataKey="institution" name="기관 (증권사·펀드)" fill="#6366f1" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -520,14 +503,14 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {financials && financials.financials.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">분기별 실적</h3>
-                <p className="text-[11px] text-slate-500 mb-4">최근 분기별 매출과 이익 추이예요. 꾸준히 늘어나면 좋은 신호!</p>
+                <p className="text-xs text-slate-500 mb-4">최근 분기별 매출과 이익 추이예요. 꾸준히 늘어나면 좋은 신호!</p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-slate-800">
-                        <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold">구분</th>
+                        <th className="text-left py-2 px-3 text-xs text-slate-500 font-bold">구분</th>
                         {financials.periods.slice(0, 5).map(p => (
-                          <th key={p} className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">{p}</th>
+                          <th key={p} className="text-right py-2 px-3 text-xs text-slate-500 font-bold">{p}</th>
                         ))}
                       </tr>
                     </thead>
@@ -556,21 +539,21 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {sectorData && sectorData.stocks.length > 1 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">같은 업종 비교</h3>
-                <p className="text-[11px] text-slate-500 mb-4">
+                <p className="text-xs text-slate-500 mb-4">
                   <span className="text-blue-400 font-bold">{sectorData.category}</span> 업종 평균과 비교해요.
                   업종 평균보다 PER이 낮고 ROE가 높으면 좋아요!
                 </p>
                 <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50">
                   <div className="text-center">
-                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 PER</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 평균 PER</p>
                     <p className="text-sm font-bold text-blue-400">{sectorData.averages.per}배</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 PBR</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 평균 PBR</p>
                     <p className="text-sm font-bold text-blue-400">{sectorData.averages.pbr}배</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 ROE</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 평균 ROE</p>
                     <p className="text-sm font-bold text-blue-400">{sectorData.averages.roe}%</p>
                   </div>
                 </div>
@@ -578,10 +561,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-slate-950">
                       <tr className="border-b border-slate-800">
-                        <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold">종목</th>
-                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">PER</th>
-                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">PBR</th>
-                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">ROE</th>
+                        <th className="text-left py-2 px-3 text-xs text-slate-500 font-bold">종목</th>
+                        <th className="text-right py-2 px-3 text-xs text-slate-500 font-bold">PER</th>
+                        <th className="text-right py-2 px-3 text-xs text-slate-500 font-bold">PBR</th>
+                        <th className="text-right py-2 px-3 text-xs text-slate-500 font-bold">ROE</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -591,12 +574,12 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                           <tr key={s.code} className={`border-b border-slate-800/30 ${isCurrent ? 'bg-blue-600/10' : ''}`}>
                             <td className="py-2 px-3">
                               <span className={isCurrent ? 'text-blue-400 font-bold' : 'text-slate-300'}>{s.name}</span>
-                              {isCurrent && <span className="text-[9px] text-blue-500 ml-1">← 현재</span>}
+                              {isCurrent && <span className="text-xs text-blue-500 ml-1">← 현재</span>}
                             </td>
                             <td className="text-right py-2 px-3">
                               <span className="text-slate-300">{s.per || '---'}</span>
                               {s.perVsAvg !== null && (
-                                <span className={`text-[9px] ml-1 ${s.perVsAvg < 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                <span className={`text-xs ml-1 ${s.perVsAvg < 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                                   ({s.perVsAvg > 0 ? '+' : ''}{s.perVsAvg}%)
                                 </span>
                               )}
@@ -607,7 +590,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                             <td className="text-right py-2 px-3">
                               <span className="text-slate-300">{s.roe ? `${s.roe}%` : '---'}</span>
                               {s.roeVsAvg !== null && (
-                                <span className={`text-[9px] ml-1 ${s.roeVsAvg > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                <span className={`text-xs ml-1 ${s.roeVsAvg > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                                   ({s.roeVsAvg > 0 ? '+' : ''}{s.roeVsAvg}%)
                                 </span>
                               )}
@@ -625,7 +608,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {news.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">최신 뉴스</h3>
-                <p className="text-[11px] text-slate-500 mb-4">이 종목과 관련된 최근 뉴스예요. 투자 전 꼭 확인해보세요!</p>
+                <p className="text-xs text-slate-500 mb-4">이 종목과 관련된 최근 뉴스예요. 투자 전 꼭 확인해보세요!</p>
                 <div className="space-y-3">
                   {news.map((item, i) => (
                     <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
@@ -633,11 +616,11 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                       <p className="text-sm text-slate-200 group-hover:text-blue-400 transition-colors leading-relaxed mb-1">
                         {item.title}
                       </p>
-                      <div className="flex items-center space-x-2 text-[10px] text-slate-600">
+                      <div className="flex items-center space-x-2 text-xs text-slate-600">
                         <span>{item.source}</span>
                         <span>·</span>
                         <span>{item.date}</span>
-                        <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 text-blue-400 transition-opacity" />
+                        <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 text-blue-400 transition-opacity" />
                       </div>
                     </a>
                   ))}
@@ -656,7 +639,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
 
               <div className="space-y-6 text-sm text-slate-300 leading-relaxed mb-6">
                 <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-4">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 font-bold">종합 의견</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-2 font-bold">종합 의견</p>
                   <div className="flex items-center space-x-2">
                     <span className={`text-lg font-black px-3 py-1 rounded-lg ${
                       stockDetail?.opinion === '긍정적' || stockDetail?.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
@@ -695,7 +678,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                         <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">T</div>
                         <div>
                           <p className="text-xs font-bold text-white">토스증권 차트 보기</p>
-                          <p className="text-[10px] text-slate-500">실시간 차트와 커뮤니티 반응 확인</p>
+                          <p className="text-xs text-slate-500">실시간 차트와 커뮤니티 반응 확인</p>
                         </div>
                       </div>
                       <ArrowUpRight size={16} className="text-slate-500 group-hover:text-blue-400 transition-all" />
@@ -707,7 +690,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               {!isHolding && stock.fairPrice && (
                 <div className="flex justify-between items-center p-4 bg-emerald-500/10 rounded-xl border border-emerald-500/20 mb-6">
                   <div>
-                    <p className="text-[10px] text-emerald-500 uppercase tracking-widest mb-0.5">AI 추천 매수 적정가</p>
+                    <p className="text-xs text-emerald-500 uppercase tracking-widest mb-0.5">AI 추천 매수 적정가</p>
                     <p className="text-xl font-black text-white">₩{stock.fairPrice.toLocaleString()}</p>
                   </div>
                   <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400"><Zap size={20} fill="currentColor" /></div>
@@ -723,19 +706,19 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   <div className="space-y-4">
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest block font-bold">매수가 (₩)</label>
+                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">매수가 (₩)</label>
                         <input type="number" title="매수가" value={addForm.avgPrice}
                           onChange={(e) => setAddForm({ ...addForm, avgPrice: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest block font-bold">수량 (주)</label>
+                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">수량 (주)</label>
                         <input type="number" title="수량" value={addForm.quantity}
                           onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest block font-bold">비중 (%)</label>
+                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">비중 (%)</label>
                         <input type="number" title="비중" value={addForm.weight}
                           onChange={(e) => setAddForm({ ...addForm, weight: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
@@ -755,7 +738,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                         onBack();
                       } catch (err) { console.error('Failed to add:', err); } finally { setAdding(false); }
                     }} disabled={adding}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50">
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 min-h-[44px]">
                       {adding ? '추가 중...' : '포트폴리오 등록'}
                     </button>
                   </div>
@@ -763,9 +746,9 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               )}
 
               <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 mb-6">
-                <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest text-center italic">Probability</p>
+                <p className="text-xs text-slate-500 mb-1 uppercase tracking-widest text-center italic">Probability</p>
                 <div className="text-3xl font-black text-center text-white">{computeProbability()}%</div>
-                <p className="text-[10px] text-slate-500 text-center mt-1">상승 예측 확률</p>
+                <p className="text-xs text-slate-500 text-center mt-1">상승 예측 확률</p>
               </div>
 
               <button onClick={async () => {

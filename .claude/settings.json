@@ -6,7 +6,15 @@
       "Bash(npm install:*)",
       "Bash(node server.js)",
       "Bash(echo \"Server PID: $!\")",
-      "Read(//c/Users/aistudio/AppData/Local/Temp/claude/c--Users-aistudio-Documents-stock-app-dev/0109bae9-d1f8-44cc-8cc8-1e8106983895/tasks/**)"
+      "Read(//c/Users/aistudio/AppData/Local/Temp/claude/c--Users-aistudio-Documents-stock-app-dev/0109bae9-d1f8-44cc-8cc8-1e8106983895/tasks/**)",
+      "Bash(node --check server/server.js)",
+      "Bash(node server/server.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -s -m 3 http://localhost:3001/api/health)",
+      "Bash(curl -s -m 5 http://localhost:3001/api/health)",
+      "Bash(netstat -ano)",
+      "Bash(npm run:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

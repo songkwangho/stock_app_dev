@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { stockApi } from './api/stockApi';
 import { useStockStore } from './stores/useStockStore';
+import { useToastStore } from './stores/useToastStore';
 import NavButton from './components/NavButton';
 import type { StockSummary, Alert, MarketIndex } from './types/stock';
 
@@ -34,6 +35,12 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StockSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [nickname, setNickname] = useState(() => localStorage.getItem('nickname') || '');
+
+  const handleNicknameChange = (name: string) => {
+    setNickname(name);
+    localStorage.setItem('nickname', name);
+  };
 
   // Track the previous tab before entering detail view
   const prevTabRef = useRef('dashboard');
@@ -122,11 +129,13 @@ const App = () => {
   };
 
   const handleDeleteAlert = async (id: number) => {
+    const prev = alerts;
+    setAlerts(alerts.filter(a => a.id !== id)); // optimistic
     try {
       await stockApi.deleteAlert(id);
-      setAlerts(alerts.filter(a => a.id !== id));
     } catch (error) {
       console.error('Failed to delete alert:', error);
+      setAlerts(prev); // rollback on failure
     }
   };
 
@@ -174,10 +183,10 @@ const App = () => {
               <div className="flex items-center space-x-4">
                 {marketIndices.map(idx => (
                   <div key={idx.symbol} className="flex items-center space-x-2">
-                    <span className="text-[10px] font-bold text-slate-500">{idx.symbol}</span>
+                    <span className="text-xs font-bold text-slate-500">{idx.symbol}</span>
                     <span className="text-xs font-bold text-white">{idx.value?.toLocaleString() || '---'}</span>
                     {idx.changeRate && (
-                      <span className={`text-[10px] font-bold ${idx.positive ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className={`text-xs font-bold ${idx.positive ? 'text-emerald-500' : 'text-red-500'}`}>
                         {idx.positive ? '▲' : '▼'} {idx.changeRate}
                       </span>
                     )}
@@ -208,9 +217,9 @@ const App = () => {
                   >
                     <div className="text-left">
                       <p className="text-sm font-bold">{stock.name}</p>
-                      <p className="text-[10px] text-slate-500">{stock.code}</p>
+                      <p className="text-xs text-slate-500">{stock.code}</p>
                     </div>
-                    <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">
+                    <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">
                       {stock.category}
                     </span>
                   </button>
@@ -230,7 +239,7 @@ const App = () => {
               >
                 <Bell size={20} className="text-slate-400" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-slate-950 flex items-center justify-center text-[9px] font-bold text-white px-1">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-slate-950 flex items-center justify-center text-xs font-bold text-white px-1">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -257,20 +266,20 @@ const App = () => {
                           <div key={alert.id} className="px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors group">
                             <div className="flex items-start justify-between mb-1">
                               <div className="flex items-center space-x-2">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>
+                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>
                                   {typeInfo.label}
                                 </span>
-                                <span className="text-[10px] text-slate-600">{alert.name}</span>
+                                <span className="text-xs text-slate-600">{alert.name}</span>
                               </div>
                               <button
                                 onClick={() => handleDeleteAlert(alert.id)}
-                                className="text-slate-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                className="text-red-400/60 active:text-red-400 transition-all p-1 min-w-[32px] min-h-[32px] flex items-center justify-center"
                               >
-                                <Trash2 size={12} />
+                                <Trash2 size={14} />
                               </button>
                             </div>
                             <p className="text-xs text-slate-400 leading-relaxed">{alert.message}</p>
-                            <p className="text-[10px] text-slate-600 mt-1">
+                            <p className="text-xs text-slate-600 mt-1">
                               {new Date(alert.created_at).toLocaleString('ko-KR')}
                             </p>
                           </div>
@@ -284,11 +293,11 @@ const App = () => {
             <div className="h-6 w-px bg-slate-800"></div>
             <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => navigateTo('analysis')}>
               <div className="text-right">
-                <p className="text-sm font-bold leading-none mb-1 group-hover:text-blue-400 transition-colors">홍길동</p>
-                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">내 포트폴리오</p>
+                <p className="text-sm font-bold leading-none mb-1 group-hover:text-blue-400 transition-colors">{nickname || '투자자'}</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-tighter">내 포트폴리오</p>
               </div>
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-0.5">
-                <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center font-bold text-blue-400">H</div>
+                <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center font-bold text-blue-400">{(nickname || '투자자')[0]}</div>
               </div>
             </div>
           </div>
@@ -308,7 +317,7 @@ const App = () => {
               {activeTab === 'watchlist' && <WatchlistPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'screener' && <ScreenerPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'major' && <MajorStocksPage onDetailClick={handleNavDetailClick} />}
-              {activeTab === 'settings' && <SettingsPage />}
+              {activeTab === 'settings' && <SettingsPage nickname={nickname} onNicknameChange={handleNicknameChange} />}
               {activeTab === 'detail' && selectedStock && (
                 <StockDetailView stock={selectedStock} onAdd={addHolding} onUpdate={updateHolding} onBack={handleBack} />
               )}
@@ -316,6 +325,30 @@ const App = () => {
           </div>
         </main>
       </div>
+      {/* Global Toast */}
+      <ToastContainer />
+    </div>
+  );
+};
+
+const ToastContainer = () => {
+  const { toasts, removeToast } = useToastStore();
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-[100] space-y-2 max-w-sm">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          onClick={() => removeToast(t.id)}
+          className={`px-5 py-3 rounded-2xl text-sm font-medium shadow-lg cursor-pointer animate-in slide-in-from-bottom-2 duration-300 ${
+            t.type === 'error' ? 'bg-red-500/90 text-white' :
+            t.type === 'success' ? 'bg-emerald-500/90 text-white' :
+            'bg-blue-500/90 text-white'
+          }`}
+        >
+          {t.message}
+        </div>
+      ))}
     </div>
   );
 };
