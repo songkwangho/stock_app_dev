@@ -11,7 +11,15 @@
       "Bash(curl -s http://localhost:3001/api/holdings)",
       "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" http://localhost:3001/api/stocks)",
       "Bash(echo \"PID: $!\" sleep 5 curl -s -w \"\\\\nHTTP: %{http_code}\" http://localhost:3001/api/holdings)",
-      "Bash(curl -s http://localhost:5173 -o /dev/null -w \"Vite: %{http_code}\")"
+      "Bash(curl -s http://localhost:5173 -o /dev/null -w \"Vite: %{http_code}\")",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\" //FO CSV)",
+      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\" http://localhost:5173)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq node*\" //IM node.exe)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:5173 -o /dev/null -w \"Frontend: %{http_code}\")",
+      "Bash(curl -s \"http://localhost:3001/api/search?q=삼성\")",
+      "Bash(curl -s \"http://localhost:3001/api/search?q=%EC%82%BC%EC%84%B1\")",
+      "Bash(curl -s -m 3 http://localhost:5173)"
     ]
   }
 }

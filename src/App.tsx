@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import {
-  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X, Eye
+  LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X, Eye, Filter
 } from 'lucide-react';
 import { stockApi } from './api/stockApi';
 import { useStockStore } from './stores/useStockStore';
@@ -14,6 +14,7 @@ const MajorStocksPage = lazy(() => import('./pages/MajorStocksPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const StockDetailView = lazy(() => import('./components/StockDetailView'));
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'));
+const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
 
 const ALERT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   sma5_break: { label: '5일선 이탈', color: 'text-red-400 bg-red-500/10' },
@@ -27,7 +28,7 @@ const App = () => {
   const {
     activeTab, selectedStock, holdings,
     navigateTo, handleDetailClick,
-    fetchHoldings, addHolding, deleteHolding,
+    fetchHoldings, addHolding, updateHolding, deleteHolding,
   } = useStockStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -142,9 +143,10 @@ const App = () => {
 
         <nav className="flex-1 px-4 space-y-1.5">
           <NavButton active={activeTab === 'dashboard'} onClick={() => navigateTo('dashboard')} icon={<LayoutDashboard size={20} />} label="대시보드" />
-          <NavButton active={activeTab === 'analysis'} onClick={() => navigateTo('analysis')} icon={<TrendingUp size={20} />} label="보유 종목 분석" />
+          <NavButton active={activeTab === 'analysis'} onClick={() => navigateTo('analysis')} icon={<TrendingUp size={20} />} label="내 포트폴리오" />
           <NavButton active={activeTab === 'recommendations' || (activeTab === 'detail' && selectedStock?.category !== '보유 종목' && selectedStock?.category !== '주요 종목')} onClick={() => navigateTo('recommendations')} icon={<Star size={20} />} label="유망 종목 추천" />
           <NavButton active={activeTab === 'watchlist'} onClick={() => navigateTo('watchlist')} icon={<Eye size={20} />} label="관심종목" />
+          <NavButton active={activeTab === 'screener'} onClick={() => navigateTo('screener')} icon={<Filter size={20} />} label="종목 스크리너" />
           <NavButton active={activeTab === 'major'} onClick={() => navigateTo('major')} icon={<Layers size={20} />} label="주요 종목 현황" />
           <NavButton active={activeTab === 'settings'} onClick={() => navigateTo('settings')} icon={<Settings size={20} />} label="설정" />
         </nav>
@@ -280,10 +282,10 @@ const App = () => {
               )}
             </div>
             <div className="h-6 w-px bg-slate-800"></div>
-            <div className="flex items-center space-x-3 cursor-pointer group">
+            <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => navigateTo('analysis')}>
               <div className="text-right">
                 <p className="text-sm font-bold leading-none mb-1 group-hover:text-blue-400 transition-colors">홍길동</p>
-                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">My Account</p>
+                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">내 포트폴리오</p>
               </div>
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-0.5">
                 <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center font-bold text-blue-400">H</div>
@@ -300,14 +302,15 @@ const App = () => {
                 <span>로딩 중...</span>
               </div>
             }>
-              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onAdd={addHolding} onDelete={deleteHolding} onDetailClick={handleNavDetailClick} />}
-              {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onNavigate={navigateTo} onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onAdd={addHolding} onUpdate={updateHolding} onDelete={deleteHolding} onDetailClick={handleNavDetailClick} />}
               {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'watchlist' && <WatchlistPage onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'screener' && <ScreenerPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'major' && <MajorStocksPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'settings' && <SettingsPage />}
               {activeTab === 'detail' && selectedStock && (
-                <StockDetailView stock={selectedStock} onAdd={addHolding} onBack={handleBack} />
+                <StockDetailView stock={selectedStock} onAdd={addHolding} onUpdate={updateHolding} onBack={handleBack} />
               )}
             </Suspense>
           </div>

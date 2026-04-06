@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Trash2, Plus, TrendingUp } from 'lucide-react';
+import { RefreshCw, Trash2, TrendingUp } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
+import StockSearchInput from '../components/StockSearchInput';
 import type { WatchlistItem, StockSummary } from '../types/stock';
 
 interface WatchlistPageProps {
@@ -10,8 +11,7 @@ interface WatchlistPageProps {
 const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newCode, setNewCode] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   const fetchWatchlist = async () => {
     try {
@@ -28,18 +28,14 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
     fetchWatchlist();
   }, []);
 
-  const handleAdd = async () => {
-    if (!newCode.trim()) return;
-    setAdding(true);
+  const handleAdd = async (stock: { code: string }) => {
     try {
-      await stockApi.addToWatchlist(newCode.trim());
-      setNewCode('');
+      await stockApi.addToWatchlist(stock.code);
+      setResetKey(k => k + 1);
       fetchWatchlist();
     } catch (error) {
       console.error('Failed to add to watchlist:', error);
-      alert('종목 추가에 실패했습니다. 종목 코드를 확인해주세요.');
-    } finally {
-      setAdding(false);
+      alert('종목 추가에 실패했습니다.');
     }
   };
 
@@ -71,24 +67,13 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
 
       {/* Add Section */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
-        <div className="flex space-x-3">
-          <input
-            type="text"
-            placeholder="관심종목 코드 입력 (예: 005930)"
-            value={newCode}
-            onChange={(e) => setNewCode(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-5 py-3 text-sm focus:border-blue-500/50 outline-none transition-all"
-          />
-          <button
-            onClick={handleAdd}
-            disabled={adding || !newCode.trim()}
-            className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white font-bold py-3 px-6 rounded-2xl text-sm transition-all flex items-center space-x-2"
-          >
-            {adding ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />}
-            <span>추가</span>
-          </button>
-        </div>
+        <p className="text-xs text-slate-500 mb-3">종목명을 검색해서 관심종목에 추가하세요</p>
+        <StockSearchInput
+          placeholder="종목명을 입력하세요 (예: 삼성전자)"
+          onSelect={handleAdd}
+          resetKey={resetKey}
+          className="w-full"
+        />
       </div>
 
       {/* Watchlist Grid */}

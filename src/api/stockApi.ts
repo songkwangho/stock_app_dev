@@ -102,5 +102,30 @@ export const stockApi = {
     getIndicators: async (code: string) => {
         const response = await axios.get(`${API_BASE_URL}/stock/${code}/indicators`);
         return response.data;
+    },
+    // Screener
+    screener: async (filters: Record<string, string | number>) => {
+        const response = await axios.get(`${API_BASE_URL}/screener`, { params: filters });
+        return response.data;
+    },
+    // Financial statements
+    getFinancials: async (code: string) => {
+        const response = await axios.get(`${API_BASE_URL}/stock/${code}/financials`);
+        return response.data;
+    },
+    // News
+    getNews: async (code: string) => {
+        const response = await axios.get(`${API_BASE_URL}/stock/${code}/news`);
+        return response.data;
+    },
+    // Sector comparison
+    getSectorComparison: async (category: string) => {
+        const response = await axios.get(`${API_BASE_URL}/sector/${encodeURIComponent(category)}/compare`);
+        return response.data;
+    },
+    // Weekly/Monthly chart data
+    getChartData: async (code: string, timeframe: 'weekly' | 'monthly') => {
+        const response = await axios.get(`${API_BASE_URL}/stock/${code}/chart/${timeframe}`);
+        return response.data;
     }
 };

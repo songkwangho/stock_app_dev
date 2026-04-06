@@ -144,3 +144,25 @@ export interface TechnicalIndicators {
     details: IndicatorDetail[];
   } | null;
 }
+
+export interface NewsItem {
+  title: string;
+  url: string;
+  date: string;
+  source: string;
+}
+
+export interface FinancialData {
+  periods: string[];
+  financials: { label: string; values: (number | null)[] }[];
+}
+
+export interface SectorComparison {
+  category: string;
+  averages: { per: number; pbr: number; roe: number };
+  stocks: (Stock & {
+    perVsAvg: number | null;
+    pbrVsAvg: number | null;
+    roeVsAvg: number | null;
+  })[];
+}

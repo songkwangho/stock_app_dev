@@ -7,12 +7,13 @@ import {
   BarChart, Bar, Cell, ReferenceLine
 } from 'recharts';
 import { stockApi } from '../api/stockApi';
-import type { StockSummary, StockDetail, ChartDataPoint, TechnicalIndicators } from '../types/stock';
+import type { StockSummary, StockDetail, ChartDataPoint, TechnicalIndicators, NewsItem, FinancialData, SectorComparison, HistoryEntry } from '../types/stock';
 
 interface StockDetailViewProps {
   stock: StockSummary;
   onBack: () => void;
   onAdd: (stock: { code: string; name: string; value: number; avgPrice: number; quantity?: number }) => Promise<void>;
+  onUpdate?: (stock: { code: string; name: string; value: number; avgPrice: number; quantity?: number }) => Promise<void>;
 }
 
 // Custom candlestick shape for ComposedChart
@@ -39,29 +40,45 @@ const CandlestickBar = (props: Record<string, unknown>) => {
   );
 };
 
-const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
+const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProps) => {
   const isHolding = stock.category === '보유 종목';
 
   const [stockDetail, setStockDetail] = useState<StockDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [addForm, setAddForm] = useState({ avgPrice: '0', weight: '5', quantity: '0' });
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({ avgPrice: '', quantity: '', weight: '' });
   const [adding, setAdding] = useState(false);
   const [volatility, setVolatility] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [indicators, setIndicators] = useState<TechnicalIndicators | null>(null);
   const [showHelp, setShowHelp] = useState<string | null>(null);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [financials, setFinancials] = useState<FinancialData | null>(null);
+  const [sectorData, setSectorData] = useState<SectorComparison | null>(null);
+  const [chartTimeframe, setChartTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [extraChartData, setExtraChartData] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const [data, vol, ind] = await Promise.all([
+        const [data, vol, ind, newsData, finData] = await Promise.all([
           stockApi.getCurrentPrice(stock.code),
           stockApi.getVolatility(stock.code),
           stockApi.getIndicators(stock.code),
+          stockApi.getNews(stock.code).catch(() => []),
+          stockApi.getFinancials(stock.code).catch(() => null),
         ]);
         setStockDetail(data);
         setVolatility(vol.volatility);
         setIndicators(ind);
+        setNews(newsData);
+        setFinancials(finData);
+        // Fetch sector comparison if category available
+        const cat = data?.category || stock.category;
+        if (cat) {
+          stockApi.getSectorComparison(cat).then(setSectorData).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to fetch stock detail:', error);
       } finally {
@@ -77,6 +94,14 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
     }
   }, [stockDetail?.price]);
 
+  // Fetch weekly/monthly chart data when timeframe changes
+  useEffect(() => {
+    if (chartTimeframe !== 'daily') {
+      stockApi.getChartData(stock.code, chartTimeframe as 'weekly' | 'monthly')
+        .then(setExtraChartData).catch(() => setExtraChartData([]));
+    }
+  }, [chartTimeframe, stock.code]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-500">
@@ -86,13 +111,18 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
     );
   }
 
-  const historyData = stockDetail?.history || [];
+  const historyData = chartTimeframe === 'daily'
+    ? (stockDetail?.history || [])
+    : extraChartData;
 
   const fullChartData: ChartDataPoint[] = historyData.map((d, i, arr) => {
     const sma5 = i >= 4 ? Math.round(arr.slice(i - 4, i + 1).reduce((acc, cur) => acc + cur.price, 0) / 5) : null;
     const sma20 = i >= 19 ? Math.round(arr.slice(i - 19, i + 1).reduce((acc, cur) => acc + cur.price, 0) / 20) : null;
+    const formatDate = chartTimeframe === 'monthly'
+      ? d.date.slice(2, 4) + '/' + d.date.slice(4, 6)
+      : d.date.slice(4, 6) + '/' + d.date.slice(6, 8);
     return {
-      name: d.date.slice(4, 6) + '/' + d.date.slice(6, 8),
+      name: formatDate,
       price: d.price,
       open: d.open,
       high: d.high,
@@ -103,7 +133,8 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
     };
   });
 
-  const chartData = fullChartData.slice(-20);
+  const sliceCount = chartTimeframe === 'monthly' ? 12 : 20;
+  const chartData = fullChartData.slice(-sliceCount);
   const latest = chartData[chartData.length - 1] || { price: 0, sma5: null, sma20: null, open: 0, high: 0, low: 0, volume: 0 };
   const prev = chartData[chartData.length - 2] || { price: 0, sma5: null, sma20: null };
   const latestPrice = stockDetail?.price || latest.price;
@@ -178,9 +209,81 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
               ₩{latestPrice.toLocaleString()}
             </div>
             {isHolding && (
-              <p className={`text-sm font-bold mt-1 ${parseFloat(profitRate || '0') >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                수익률: {profitRate}% (매수가: ₩{stock.avgPrice?.toLocaleString()})
-              </p>
+              <div className="mt-1 flex items-center space-x-3">
+                <p className={`text-sm font-bold ${parseFloat(profitRate || '0') >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                  수익률: {profitRate}% (매수가: ₩{stock.avgPrice?.toLocaleString()})
+                </p>
+                {onUpdate && !editMode && (
+                  <button
+                    onClick={() => {
+                      setEditMode(true);
+                      setEditForm({
+                        avgPrice: String(stock.avgPrice || ''),
+                        quantity: String(stock.quantity || '0'),
+                        weight: String(stock.value || '5'),
+                      });
+                    }}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold bg-blue-500/10 px-2 py-1 rounded-lg transition-colors"
+                  >
+                    보유 정보 수정
+                  </button>
+                )}
+              </div>
+            )}
+            {isHolding && editMode && onUpdate && (
+              <div className="mt-3 p-4 bg-slate-900/50 border border-blue-500/20 rounded-2xl animate-in fade-in duration-200">
+                <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mb-3">보유 정보 수정</p>
+                <div className="flex items-end space-x-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block">매수가 (원)</label>
+                    <input
+                      type="number"
+                      value={editForm.avgPrice}
+                      onChange={(e) => setEditForm({ ...editForm, avgPrice: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-500 mb-1 block">수량 (주)</label>
+                    <input
+                      type="number"
+                      value={editForm.quantity}
+                      onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <label className="text-[10px] text-slate-500 mb-1 block">비중 (%)</label>
+                    <input
+                      type="number"
+                      value={editForm.weight}
+                      onChange={(e) => setEditForm({ ...editForm, weight: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await onUpdate({
+                        code: stock.code,
+                        name: stock.name,
+                        avgPrice: parseInt(editForm.avgPrice),
+                        quantity: parseInt(editForm.quantity || '0'),
+                        value: parseInt(editForm.weight || '5'),
+                      });
+                      setEditMode(false);
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors"
+                  >
+                    저장
+                  </button>
+                  <button
+                    onClick={() => setEditMode(false)}
+                    className="px-3 py-2 text-slate-500 hover:text-white text-xs rounded-xl transition-colors"
+                  >
+                    취소
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -216,7 +319,16 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
                     <HelpCircle size={14} />
                   </button>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal">최근 20거래일</span>
+                <div className="flex items-center space-x-1">
+                  {(['daily', 'weekly', 'monthly'] as const).map(tf => (
+                    <button key={tf} onClick={() => setChartTimeframe(tf)}
+                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                        chartTimeframe === tf ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}>
+                      {tf === 'daily' ? '일봉' : tf === 'weekly' ? '주봉' : '월봉'}
+                    </button>
+                  ))}
+                </div>
               </h3>
               {showHelp === 'candle' && (
                 <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-4 text-xs text-blue-300 leading-relaxed">
@@ -400,6 +512,135 @@ const StockDetailView = ({ stock, onBack, onAdd }: StockDetailViewProps) => {
                       <Bar dataKey="institution" name="기관" fill="#6366f1" />
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Financial Statements */}
+            {financials && financials.financials.length > 0 && (
+              <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
+                <h3 className="text-lg font-semibold mb-2">분기별 실적</h3>
+                <p className="text-[11px] text-slate-500 mb-4">최근 분기별 매출과 이익 추이예요. 꾸준히 늘어나면 좋은 신호!</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold">구분</th>
+                        {financials.periods.slice(0, 5).map(p => (
+                          <th key={p} className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">{p}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financials.financials.map(row => (
+                        <tr key={row.label} className="border-b border-slate-800/30">
+                          <td className="py-2.5 px-3 text-slate-300 font-semibold">{row.label}</td>
+                          {row.values.slice(0, 5).map((v, i) => {
+                            const prev = i > 0 ? row.values[i - 1] : null;
+                            const isGrowing = v !== null && prev !== null && v > prev;
+                            return (
+                              <td key={i} className={`text-right py-2.5 px-3 ${v === null ? 'text-slate-600' : isGrowing ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                {v !== null ? `${v.toLocaleString()}억` : '---'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Sector Comparison */}
+            {sectorData && sectorData.stocks.length > 1 && (
+              <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
+                <h3 className="text-lg font-semibold mb-2">같은 업종 비교</h3>
+                <p className="text-[11px] text-slate-500 mb-4">
+                  <span className="text-blue-400 font-bold">{sectorData.category}</span> 업종 평균과 비교해요.
+                  업종 평균보다 PER이 낮고 ROE가 높으면 좋아요!
+                </p>
+                <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50">
+                  <div className="text-center">
+                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 PER</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.per}배</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 PBR</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.pbr}배</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-slate-500 mb-1">업종 평균 ROE</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.roe}%</p>
+                  </div>
+                </div>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-950">
+                      <tr className="border-b border-slate-800">
+                        <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold">종목</th>
+                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">PER</th>
+                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">PBR</th>
+                        <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold">ROE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sectorData.stocks.map(s => {
+                        const isCurrent = s.code === stock.code;
+                        return (
+                          <tr key={s.code} className={`border-b border-slate-800/30 ${isCurrent ? 'bg-blue-600/10' : ''}`}>
+                            <td className="py-2 px-3">
+                              <span className={isCurrent ? 'text-blue-400 font-bold' : 'text-slate-300'}>{s.name}</span>
+                              {isCurrent && <span className="text-[9px] text-blue-500 ml-1">← 현재</span>}
+                            </td>
+                            <td className="text-right py-2 px-3">
+                              <span className="text-slate-300">{s.per || '---'}</span>
+                              {s.perVsAvg !== null && (
+                                <span className={`text-[9px] ml-1 ${s.perVsAvg < 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                  ({s.perVsAvg > 0 ? '+' : ''}{s.perVsAvg}%)
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-right py-2 px-3">
+                              <span className="text-slate-300">{s.pbr || '---'}</span>
+                            </td>
+                            <td className="text-right py-2 px-3">
+                              <span className="text-slate-300">{s.roe ? `${s.roe}%` : '---'}</span>
+                              {s.roeVsAvg !== null && (
+                                <span className={`text-[9px] ml-1 ${s.roeVsAvg > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                  ({s.roeVsAvg > 0 ? '+' : ''}{s.roeVsAvg}%)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* News */}
+            {news.length > 0 && (
+              <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
+                <h3 className="text-lg font-semibold mb-2">최신 뉴스</h3>
+                <p className="text-[11px] text-slate-500 mb-4">이 종목과 관련된 최근 뉴스예요. 투자 전 꼭 확인해보세요!</p>
+                <div className="space-y-3">
+                  {news.map((item, i) => (
+                    <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
+                      className="block p-3 bg-slate-900/50 rounded-xl border border-slate-800/50 hover:border-blue-500/30 hover:bg-slate-900 transition-all group">
+                      <p className="text-sm text-slate-200 group-hover:text-blue-400 transition-colors leading-relaxed mb-1">
+                        {item.title}
+                      </p>
+                      <div className="flex items-center space-x-2 text-[10px] text-slate-600">
+                        <span>{item.source}</span>
+                        <span>·</span>
+                        <span>{item.date}</span>
+                        <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 text-blue-400 transition-opacity" />
+                      </div>
+                    </a>
+                  ))}
                 </div>
               </div>
             )}

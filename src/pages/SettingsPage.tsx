@@ -1,26 +1,22 @@
 import { useState } from 'react';
-import { PlusCircle, ShieldCheck, Settings, RefreshCw, Plus } from 'lucide-react';
+import { PlusCircle, ShieldCheck, Settings } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
+import StockSearchInput from '../components/StockSearchInput';
 
 const SettingsPage = () => {
-  const [newStockCode, setNewStockCode] = useState('');
-  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [resetKey, setResetKey] = useState(0);
 
-  const handleAddStock = async () => {
-    if (!newStockCode.trim()) return;
-    setLoading(true);
+  const handleAddStock = async (stock: { code: string; name: string }) => {
     setMessage(null);
     try {
-      const result = await stockApi.addStock(newStockCode.trim());
+      const result = await stockApi.addStock(stock.code);
       setMessage({ type: 'success', text: `종목 ${result.name} (${result.code})이 성공적으로 추가되었습니다.` });
-      setNewStockCode('');
+      setResetKey(k => k + 1);
     } catch (error: unknown) {
       console.error('Failed to add stock:', error);
       const axiosError = error as { response?: { data?: { error?: string } } };
-      setMessage({ type: 'error', text: axiosError.response?.data?.error || '종목 추가에 실패했습니다. 코드를 확인해주세요.' });
-    } finally {
-      setLoading(false);
+      setMessage({ type: 'error', text: axiosError.response?.data?.error || '종목 추가에 실패했습니다.' });
     }
   };
 
@@ -36,26 +32,15 @@ const SettingsPage = () => {
           </div>
 
           <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-            DB에 없는 신규 종목을 추가하여 실시간 분석을 시작할 수 있습니다. 종목 코드(6자리)를 입력하세요.
+            DB에 없는 신규 종목을 검색해서 추가하면 실시간 분석을 시작할 수 있어요.
           </p>
 
-          <div className="flex space-x-3 mb-4">
-            <input
-              type="text"
-              placeholder="종목 코드 입력 (예: 005930)"
-              value={newStockCode}
-              onChange={(e) => setNewStockCode(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-5 py-3 text-sm focus:border-blue-500/50 outline-none transition-all"
-            />
-            <button
-              onClick={handleAddStock}
-              disabled={loading || !newStockCode.trim()}
-              className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white font-bold py-3 px-8 rounded-2xl text-sm transition-all flex items-center"
-            >
-              {loading ? <RefreshCw className="animate-spin mr-2" size={16} /> : <Plus size={16} className="mr-2" />}
-              추가하기
-            </button>
-          </div>
+          <StockSearchInput
+            placeholder="추가할 종목명을 검색하세요 (예: 삼성전자)"
+            onSelect={handleAddStock}
+            resetKey={resetKey}
+            className="mb-4"
+          />
 
           {message && (
             <div className={`p-4 rounded-2xl text-xs font-medium ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -85,6 +70,10 @@ const SettingsPage = () => {
             <div className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800">
               <span className="text-sm text-slate-400">로컬 데이터베이스 (SQLite)</span>
               <span className="text-xs font-bold px-2 py-1 bg-blue-500/10 text-blue-400 rounded-full">활성화됨</span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800">
+              <span className="text-sm text-slate-400">자동 업데이트</span>
+              <span className="text-xs font-bold px-2 py-1 bg-blue-500/10 text-blue-400 rounded-full">매일 오전 8시</span>
             </div>
           </div>
         </div>

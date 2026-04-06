@@ -14,7 +14,8 @@ interface StockStore {
 
   fetchHoldings: () => Promise<void>;
   addHolding: (stock: { code: string; name: string; value: number; avgPrice: number; quantity?: number }) => Promise<void>;
-  deleteHolding: (index: number) => Promise<void>;
+  updateHolding: (stock: { code: string; name: string; value: number; avgPrice: number; quantity?: number }) => Promise<void>;
+  deleteHolding: (code: string) => Promise<void>;
 }
 
 export const useStockStore = create<StockStore>((set, get) => ({
@@ -48,38 +49,39 @@ export const useStockStore = create<StockStore>((set, get) => ({
 
   addHolding: async (stock) => {
     try {
-      const added = await stockApi.addHolding({
+      await stockApi.addHolding({
         code: stock.code,
         name: stock.name,
         avgPrice: stock.avgPrice,
         weight: stock.value,
         quantity: stock.quantity || 0,
       });
-      set((state) => ({
-        holdings: [
-          ...state.holdings,
-          {
-            code: added.code,
-            name: added.name,
-            value: added.weight,
-            avgPrice: added.avg_price,
-            currentPrice: added.price,
-            quantity: added.quantity || 0,
-          },
-        ],
-      }));
+      await get().fetchHoldings();
     } catch (error) {
       console.error('Failed to add holding:', error);
     }
   },
 
-  deleteHolding: async (index) => {
-    const { holdings } = get();
-    const stockToDelete = holdings[index];
+  updateHolding: async (stock) => {
     try {
-      await stockApi.deleteHolding(stockToDelete.code);
+      await stockApi.addHolding({
+        code: stock.code,
+        name: stock.name,
+        avgPrice: stock.avgPrice,
+        weight: stock.value,
+        quantity: stock.quantity || 0,
+      });
+      await get().fetchHoldings();
+    } catch (error) {
+      console.error('Failed to update holding:', error);
+    }
+  },
+
+  deleteHolding: async (code) => {
+    try {
+      await stockApi.deleteHolding(code);
       set((state) => ({
-        holdings: state.holdings.filter((_, i) => i !== index),
+        holdings: state.holdings.filter((h) => h.code !== code),
       }));
     } catch (error) {
       console.error('Failed to delete holding:', error);
