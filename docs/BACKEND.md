@@ -1,12 +1,41 @@
 # Backend Documentation
 
 ## 개요
-- **파일**: `server/server.js` (단일 파일 Express 서버, ~2,200줄)
+- **진입점**: `server/server.js` (~1,230줄, 라우트 + getStockData) + `server/index.js` (래퍼)
 - **포트**: 3001
 - **DB**: SQLite3 (better-sqlite3, 동기식) → PostgreSQL 전환 예정
 - **데이터 소스**: 공식 API 우선 + 네이버 증권 보조 스크래핑 + 토스증권 Puppeteer 캡처
 - **사용자 식별**: `X-Device-Id` 헤더 기반 (로그인 없음)
 - **보안**: CORS 화이트리스트 + express-rate-limit (device_id 기준 120req/min)
+
+### 도메인 분리 구조 (구현 완료)
+```
+server/
+├── server.js             # 라우트 23개 + getStockData + syncAllStocks (~1,230줄)
+├── index.js              # 진입점 래퍼
+├── db/
+│   ├── connection.js     # DB 연결
+│   ├── schema.js         # initSchema() — 8개 테이블 + 인덱스
+│   └── migrate.js        # runMigrations() — 11개 마이그레이션 블록
+├── helpers/
+│   ├── cache.js          # getCached/setCache/invalidateCache (10분 TTL)
+│   └── deviceId.js       # getDeviceId/requireDeviceId
+├── scrapers/
+│   ├── naver.js          # mapToCategory, fetchPriceHistory, scrapeMainPage 등
+│   └── toss.js           # captureChart (Puppeteer)
+├── domains/
+│   ├── analysis/
+│   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median
+│   │   └── indicators.js # calculateIndicators (RSI/MACD/볼린저)
+│   ├── alert/
+│   │   └── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   └── stock/
+│       └── data.js       # topStocks (97개) + initialRecommendations (20개)
+└── scheduler.js          # setupScheduler + setupCleanup
+```
+
+> **미분리 잔존**: `getStockData()` (인라인 Naver API 호출 포함), `syncAllStocks()`, `recalcWeights()`, 23개 라우트 핸들러
+> 향후 `domains/stock/service.js`, `domains/portfolio/router.js` 등으로 추가 분리 가능
 
 ---
 

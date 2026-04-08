@@ -23,11 +23,31 @@
 
 ## 프로젝트 구조
 
-### 현재 구현 상태
+### 프로젝트 구조
 ```
 stock_app_dev/
 ├── server/
-│   └── server.js             # Express 백엔드 단일 파일 (~2,200줄)
+│   ├── server.js             # Express 라우트 + getStockData (~1,230줄)
+│   ├── index.js              # 진입점 래퍼
+│   ├── db/
+│   │   ├── connection.js     # DB 연결 (better-sqlite3)
+│   │   ├── schema.js         # 8개 테이블 CREATE + 인덱스
+│   │   └── migrate.js        # 11개 마이그레이션 블록
+│   ├── helpers/
+│   │   ├── cache.js          # getCached/setCache/invalidateCache
+│   │   └── deviceId.js       # getDeviceId/requireDeviceId
+│   ├── scrapers/
+│   │   ├── naver.js          # 네이버 증권 스크래핑 (EUC-KR 단일화)
+│   │   └── toss.js           # 토스증권 Puppeteer 차트 캡처
+│   ├── domains/
+│   │   ├── analysis/
+│   │   │   ├── scoring.js    # 5개 스코어링 함수 + calculateHoldingOpinion + median
+│   │   │   └── indicators.js # calculateIndicators (RSI/MACD/볼린저)
+│   │   ├── alert/
+│   │   │   └── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   │   └── stock/
+│   │       └── data.js       # topStocks (97개) + initialRecommendations (20개)
+│   └── scheduler.js          # setupScheduler + setupCleanup
 ├── stocks.db                 # SQLite 데이터베이스 (개발 환경)
 ├── public/charts/            # 토스증권 차트 캡처 이미지
 ├── src/
@@ -51,24 +71,8 @@ stock_app_dev/
 └── package.json
 ```
 
-### 목표 구조 (백엔드 도메인 분리 — Phase 2)
-```
-server/
-├── index.js              # Express 앱 조립 + 미들웨어 등록만
-├── db/
-│   ├── schema.js         # 테이블 정의 + 초기화
-│   └── migrate.js        # 마이그레이션
-├── domains/
-│   ├── stock/            # 종목 데이터 CRUD + 스크래핑 연동
-│   ├── portfolio/        # holdings + 수익률 계산 + holding_opinion
-│   ├── analysis/         # 기술지표 + 스코어링 알고리즘
-│   ├── alert/            # 알림 생성 + 쿨다운 관리
-│   └── watchlist/        # 관심종목
-├── scrapers/
-│   ├── naver.js          # 네이버 증권 스크래핑
-│   └── toss.js           # 토스증권 Puppeteer 캡처
-└── scheduler.js          # syncAllStocks + cleanupOldData
-```
+> **server.js 잔존 코드** (~1,230줄): 라우트 핸들러 23개 + `getStockData` + `syncAllStocks` + `recalcWeights`
+> 향후 `domains/portfolio/`, `domains/stock/service.js`로 추가 분리 가능
 
 ---
 
@@ -110,7 +114,8 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
 - **보안 (예정)**: device_id HMAC 서명 (서버 시크릿 기반, 위변조 탐지)
 
 ### 백엔드 원칙
-- 현재 `server/server.js` 단일 파일. 도메인별 분리는 Phase 2에서 진행
+- 도메인별 파일 분리 완료 (`db/`, `helpers/`, `scrapers/`, `domains/`, `scheduler.js`)
+- `server.js`에는 라우트 + `getStockData` + `syncAllStocks`만 잔존 (~1,230줄)
 - better-sqlite3 동기 API 사용 (트랜잭션 활용). PostgreSQL 전환 시 비동기 패턴으로 교체
 - 네이버 스크래핑은 보조 용도에만 사용. EUC-KR 인코딩 처리는 단일 함수에 집중
 - 캐시 TTL 10분, 배치 처리 5개씩
@@ -207,8 +212,9 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
 - [x] RSI 30~50 보정 / 볼린저밴드 %B 정규화 수정
 - [x] CORS 화이트리스트 + Rate limiting per device_id
 
-### Phase 2 - 인프라 전환
-- [ ] 백엔드 `server.js` → `domains/` 구조 리팩토링
+### Phase 2 - 인프라 전환 (진행 중)
+- [x] 백엔드 도메인 분리: `db/`, `scrapers/`, `helpers/`, `domains/analysis/`, `domains/alert/`, `domains/stock/data.js`, `scheduler.js` 완료
+- [ ] 잔존 라우트 분리: `getStockData` → `domains/stock/service.js`, 라우트 → `domains/*/router.js`
 - [ ] HTTPS + device_id HMAC 서명 (보안 강화)
 - [ ] SQLite → PostgreSQL 전환 (다수 사용자 대비, 비동기 pg 패턴)
 - [ ] 공식 데이터 API 이관 (KIS Open API / KRX) — 스크래핑 의존도 최소화

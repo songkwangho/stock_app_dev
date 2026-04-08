@@ -144,6 +144,19 @@
 - **syncAllStocks() 지연**: 서버 시작 5초 후 실행 (startup 블로킹 방지)
 - **POST /api/holdings 응답**: `holding_opinion` + `market_opinion` 포함 반환
 
+### 백엔드 도메인 분리 (server.js 2,237줄 → 1,230줄)
+권장 순서에 따라 단계적 분리 완료:
+1. `db/` (connection.js, schema.js, migrate.js) — 부작용 없는 DB 초기화/마이그레이션
+2. `helpers/` (cache.js, deviceId.js) — 공용 유틸리티
+3. `scrapers/` (naver.js, toss.js) — 외부 의존성 격리
+4. `domains/analysis/` (scoring.js, indicators.js) — 순수 함수, 5개 스코어링 + calculateHoldingOpinion
+5. `domains/alert/` (service.js) — generateAlerts + ALERT_COOLDOWNS
+6. `domains/stock/` (data.js) — topStocks 97개 + initialRecommendations 20개 시드 데이터
+7. `scheduler.js` — setupScheduler + setupCleanup
+- 각 모듈은 `db` 인스턴스를 파라미터로 받는 패턴 사용 (DI)
+- ESM `import`에서 DB 초기화 순서 보장을 위해 `await import()` (dynamic import) 적용
+- 서버 시작 검증 완료 (syntax check + 실제 startup + sync 동작 확인)
+
 ---
 
 ## 사용된 AI 도구
@@ -167,7 +180,7 @@
 
 | 항목 | 현황 | 계획 |
 |------|------|------|
-| 백엔드 단일 파일 | `server/server.js` ~2,200줄 | `domains/` 구조 리팩토링 (Phase 2) |
+| 백엔드 라우트 잔존 | `server.js` ~1,230줄 (라우트+getStockData) | `domains/*/router.js` 분리 (향후) |
 | SQLite 동기 블로킹 | syncAllStocks 중 요청 지연 (5초 지연 실행으로 완화) | PostgreSQL + 비동기 전환 (Phase 2) |
 | 스크래핑 의존성 | 핵심 가격 데이터 스크래핑 | KIS Open API 이관 (Phase 2) |
 | device_id 보안 | CORS + Rate limit 적용됨. HMAC 미적용 | HMAC 서명 추가 (Phase 2) |

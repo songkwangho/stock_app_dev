@@ -188,6 +188,7 @@ export interface FinancialData {
 export interface SectorComparison {
   category: string;
   averages: { per: number; pbr: number; roe: number };
+  medians: { per: number; pbr: number; roe: number };
   stocks: (Stock & {
     perVsAvg: number | null;
     pbrVsAvg: number | null;

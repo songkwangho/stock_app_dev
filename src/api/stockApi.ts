@@ -47,6 +47,10 @@ export const stockApi = {
         const response = await axios.post(`${API_BASE_URL}/holdings`, stock);
         return response.data;
     },
+    updateHolding: async (stock: { code: string, name: string, avgPrice: number, weight: number, quantity?: number }) => {
+        const response = await axios.post(`${API_BASE_URL}/holdings`, stock);
+        return response.data;
+    },
     deleteHolding: async (code: string) => {
         const response = await axios.delete(`${API_BASE_URL}/holdings/${code}`);
         return response.data;
