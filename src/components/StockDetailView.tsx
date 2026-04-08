@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { stockApi } from '../api/stockApi';
 import type { StockSummary, StockDetail, ChartDataPoint, TechnicalIndicators, NewsItem, FinancialData, SectorComparison, HistoryEntry } from '../types/stock';
+import ScoringBreakdownPanel from './ScoringBreakdownPanel';
 
 interface StockDetailViewProps {
   stock: StockSummary;
@@ -52,7 +53,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
   const [volatility, setVolatility] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [indicators, setIndicators] = useState<TechnicalIndicators | null>(null);
-  // showHelp state removed - help text is now always visible for beginners
+  const [chartType, setChartType] = useState<'line' | 'candle'>('line');
   const [news, setNews] = useState<NewsItem[]>([]);
   const [financials, setFinancials] = useState<FinancialData | null>(null);
   const [sectorData, setSectorData] = useState<SectorComparison | null>(null);
@@ -316,6 +317,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               <h3 className="text-lg font-semibold mb-2 flex items-center justify-between">
                 <span>주가 차트</span>
                 <div className="flex items-center space-x-1">
+                  <button onClick={() => setChartType(chartType === 'line' ? 'candle' : 'line')}
+                    className="px-3 py-2.5 min-h-[44px] rounded-lg text-xs font-bold bg-slate-800 text-slate-400 hover:text-white transition-colors mr-2">
+                    {chartType === 'line' ? '캔들 차트' : '라인 차트'}
+                  </button>
                   {(['daily', 'weekly', 'monthly'] as const).map(tf => (
                     <button key={tf} onClick={() => setChartTimeframe(tf)}
                       className={`px-4 py-2.5 min-h-[44px] rounded-lg text-xs font-bold transition-colors ${
@@ -327,7 +332,9 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                 </div>
               </h3>
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-4 text-xs text-blue-300 leading-relaxed">
-                {helpTexts.candle}
+                {chartType === 'line'
+                  ? '파란선(5일 평균)과 노란선(20일 평균)을 보세요. 주가가 파란선 위에 있으면 좋은 신호예요.'
+                  : helpTexts.candle}
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -341,12 +348,15 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                         return [`₩${value?.toLocaleString() || '---'}`, labels[name || ''] || name || ''];
                       }} />
                     <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
-                    {/* Candlestick body as bar */}
-                    <Bar dataKey="price" name="종가" shape={<CandlestickBar />} isAnimationActive={false}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={index} fill={(entry.price || 0) >= (entry.open || 0) ? '#10b981' : '#ef4444'} />
-                      ))}
-                    </Bar>
+                    {chartType === 'candle' ? (
+                      <Bar dataKey="price" name="종가" shape={<CandlestickBar />} isAnimationActive={false}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={index} fill={(entry.price || 0) >= (entry.open || 0) ? '#10b981' : '#ef4444'} />
+                        ))}
+                      </Bar>
+                    ) : (
+                      <Line type="monotone" dataKey="price" name="종가" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    )}
                     <Line type="monotone" dataKey="sma5" name="5일 평균" stroke="#10b981" strokeWidth={1} dot={false} strokeDasharray="5 5" />
                     <Line type="monotone" dataKey="sma20" name="20일 평균" stroke="#f59e0b" strokeWidth={1} dot={false} strokeDasharray="3 3" />
                   </ComposedChart>
@@ -379,23 +389,49 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
                 <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PER (주가수익비율)</h4>
-                <p className="text-xl font-bold text-white">{stockDetail?.per ? `${stockDetail.per}배` : '---'}</p>
-                <p className="text-xs text-slate-600 mt-1">낮을수록 저평가</p>
+                <p className={`text-xl font-bold ${stockDetail?.per && stockDetail.per < 0 ? 'text-yellow-400' : 'text-white'}`}>
+                  {stockDetail?.per ? (stockDetail.per < 0 ? '적자' : `${stockDetail.per}배`) : '---'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {stockDetail?.per && stockDetail.per < 0
+                    ? '현재 이익이 마이너스인 기업이에요'
+                    : stockDetail?.per && stockDetail.per < 15
+                    ? '업종 평균보다 저렴한 편이에요'
+                    : stockDetail?.per && stockDetail.per < 30
+                    ? '적정 수준이에요'
+                    : stockDetail?.per ? '고평가 구간이에요' : '데이터 없음'}
+                </p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
                 <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PBR (주가순자산비율)</h4>
                 <p className="text-xl font-bold text-white">{stockDetail?.pbr ? `${stockDetail.pbr}배` : '---'}</p>
-                <p className="text-xs text-slate-600 mt-1">1 이하면 자산 대비 저평가</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {stockDetail?.pbr && stockDetail.pbr <= 1
+                    ? '자산 대비 저평가 상태예요'
+                    : stockDetail?.pbr && stockDetail.pbr <= 3
+                    ? '적정 수준이에요'
+                    : stockDetail?.pbr ? '자산 대비 비싼 편이에요' : '데이터 없음'}
+                </p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
                 <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">ROE (자기자본이익률)</h4>
                 <p className="text-xl font-bold text-white">{stockDetail?.roe ? `${stockDetail.roe}%` : '---'}</p>
-                <p className="text-xs text-slate-600 mt-1">높을수록 수익성 좋음</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {stockDetail?.roe
+                    ? `자기자본으로 ${stockDetail.roe}%를 벌었어요. ${stockDetail.roe >= 15 ? '우량 기업이에요!' : stockDetail.roe >= 10 ? '양호한 수준이에요' : '개선이 필요해요'}`
+                    : '데이터 없음'}
+                </p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
                 <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">목표가</h4>
                 <p className="text-xl font-bold text-emerald-400">{stockDetail?.targetPrice ? `₩${stockDetail.targetPrice.toLocaleString()}` : '---'}</p>
-                <p className="text-xs text-slate-600 mt-1">증권사 애널리스트 평균 예상가</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {stockDetail?.targetPrice && stockDetail?.price
+                    ? stockDetail.price < stockDetail.targetPrice
+                      ? `현재가보다 ${((stockDetail.targetPrice - stockDetail.price) / stockDetail.price * 100).toFixed(0)}% 높아요 (상승 여력)`
+                      : '현재가가 목표가에 도달했어요'
+                    : '증권사 애널리스트 평균 예상가'}
+                </p>
               </div>
             </div>
 
@@ -663,6 +699,11 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     )}
                   </div>
                 </div>
+
+                {/* Scoring Breakdown Visualization */}
+                {stockDetail?.scoringBreakdown && (
+                  <ScoringBreakdownPanel breakdown={stockDetail.scoringBreakdown} />
+                )}
 
                 <div className="space-y-4">
                   <div>

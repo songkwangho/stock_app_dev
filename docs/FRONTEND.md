@@ -133,7 +133,10 @@ interface AlertActions {
 - **경로**: `activeTab === 'analysis'`
 - **스토어**: `useNavigationStore`, `usePortfolioStore`
 - **기능**: 보유종목 추가/수정/삭제 전체 관리, 요약 통계 (종목수, 투자금, 평가액, 수익률), StockSearchInput으로 종목 검색 후 추가, 인라인 편집 (평단가/수량/비중), 삭제 확인 다이얼로그, 토스트 알림
-- **표시**: `holding_opinion`과 `market_opinion`을 각각 다른 뱃지 스타일로 구분하여 표시
+- **표시**:
+  - `holding_opinion` 뱃지 + 이유 텍스트 (매도: 평단가 대비 %, 관망: 20일선 지지, 추가매수: 5일선 근접, 보유: 정배열)
+  - `market_opinion` 뱃지 (시장: 긍정적/중립적/부정적)
+  - 수익률 옆 상황별 격려 메시지 (≥10%: "잘 하고 계세요!", <-7%: "손절 기준에 근접했어요")
 - **컴포넌트 의존**: `StockSearchInput`
 
 ### RecommendationsPage (유망 종목 추천)
@@ -169,24 +172,32 @@ interface AlertActions {
 
 ---
 
-## 컴포넌트 (5개)
+## 컴포넌트 (6개)
 
 ### StockDetailView (종목 상세 분석)
 - **Props**: `stock: StockSummary`, `onBack`, `onAdd`, `onUpdate?`
 - **기능**:
-  - 캔들스틱 차트 (SMA5/SMA20 이평선, 일봉/주봉/월봉 전환)
+  - 차트 타입 토글: 라인 차트(기본, 초보자 친화) / 캔들 차트 전환 버튼
+  - SMA5/SMA20 이평선 오버레이, 일봉/주봉/월봉 전환
+  - 라인 차트 모드에서 초보자용 설명: "파란선 위에 있으면 좋은 신호예요"
   - 거래량 바차트 (상승=초록, 하락=빨강)
   - 투자자 매매동향 (기관/외국인/개인)
-  - 기술지표 (RSI, MACD, 볼린저밴드) + 도움말 툴팁
-  - PER/PBR/ROE/목표가 지표 카드 (PER 음수 시 '적자' 뱃지 + 음수 의미 설명)
-  - 분기 재무제표 테이블
-  - 섹터 내 비교 테이블
-  - 최근 뉴스 10건
+  - 기술지표 (RSI, MACD, 볼린저밴드) + 도움말 텍스트 기본 노출
+  - PER/PBR/ROE/목표가 지표 카드 — 각각 컨텍스트 설명 병기:
+    - PER: 적자 표시, 업종 대비 저렴/적정/고평가 해석
+    - PBR: 자산 대비 저평가/적정/비싼 편 해석
+    - ROE: "자기자본으로 N%를 벌었어요" + 우량 기업 판단
+    - 목표가: 현재가 대비 상승여력 % 표시
+  - `ScoringBreakdownPanel`: 10점 스코어를 4개 영역 게이지 바 + 한국어 해석으로 시각화
+  - 분기 재무제표 테이블, 섹터 내 비교 테이블, 최근 뉴스 10건
   - 보유종목: `holding_opinion` 기반 수정 폼 / 비보유: 추가 폼
   - 의견 요약: `holding_opinion`(보유 시) + `market_opinion` 구분 표시
   - 데이터 새로고침 버튼
-  - 추천 종목인 경우 `source` 뱃지 ('수동 추천' / '알고리즘') 표시
 - **API 호출**: `getCurrentPrice`, `getVolatility`, `getIndicators`, `getNews`, `getFinancials`, `getSectorComparison`, `getChartData`, `refreshStock`
+
+### ScoringBreakdownPanel (스코어 시각화)
+- **Props**: `breakdown: ScoringBreakdown`
+- **기능**: 종합점수 /10 표시, 밸류에이션/기술지표/수급/추세 각각 게이지 바 + 한국어 설명, `per_negative`/`low_confidence` 경고 플래그
 
 ### StockSearchInput (종목 검색)
 - **Props**: `placeholder?`, `onSelect`, `resetKey?`, `className?`
@@ -195,7 +206,10 @@ interface AlertActions {
 
 ### RecommendedStockCard (추천 종목 카드)
 - **Props**: `stock: Recommendation`, `onDetailClick`
-- **기능**: 종목명/코드, 점수 뱃지, 현재가→적정가 (상승여력%), 추천 사유, `market_opinion` 뱃지, `source` 뱃지 ('수동 추천' / '알고리즘')
+- **기능**: 종목명/코드, 점수 뱃지, 현재가→적정가 (상승여력%), 추천 사유
+  - `source` 뱃지: '전문가 선정'(manual) / '알고리즘' + 호버 시 신뢰도 설명 tooltip
+  - `market_opinion` 뱃지
+  - fairPrice 라벨에 출처 표기: "적정가 (애널리스트)" vs "적정가 (추정)"
 
 ### NavButton (사이드바 네비게이션)
 - **Props**: `active`, `onClick`, `icon`, `label`
@@ -281,7 +295,19 @@ type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
 
 ## 네비게이션 구조 (App.tsx)
 
-### 사이드바 메뉴 순서
+### 반응형 레이아웃 (구현 완료)
+```
+PC/태블릿 (md: 이상):
+  좌측 고정 사이드바(w-68) + 우측 메인 콘텐츠
+  aside className="hidden md:flex ..."
+
+모바일 (md: 미만):
+  사이드바 숨김 + 하단 탭바 5개
+  nav className="fixed bottom-0 md:hidden ..."
+  탭: 대시보드 / 포트폴리오 / 추천 / 관심종목 / 설정
+```
+
+### 사이드바 메뉴 순서 (PC)
 1. 대시보드 (`dashboard`) - LayoutDashboard
 2. 내 포트폴리오 (`analysis`) - TrendingUp
 3. 유망 종목 추천 (`recommendations`) - Star
@@ -290,10 +316,15 @@ type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
 6. 주요 종목 현황 (`major`) - Layers
 7. 설정 (`settings`) - Settings
 
+### 모바일 하단 탭바 (5개)
+대시보드 / 포트폴리오 / 추천 / 관심종목 / 설정
+> 스크리너, 주요 종목은 모바일에서 하단 탭에 미포함 (각 페이지 내부 링크로 접근)
+
 ### 헤더 구성
 - 시장지수 (KOSPI/KOSDAQ)
-- 글로벌 검색바 (디바운스 300ms)
+- 글로벌 검색바 (디바운스 300ms, 모바일에서 full-width)
 - 알림 벨 (미읽은 수 뱃지) — `useAlertStore.unreadCount`
+  - 알림 아이콘 + 우선순위별 좌측 강조 border, 아이콘 + 한국어 라벨
 - 유저 프로필 → 클릭 시 analysis 페이지 이동
 
 ### 상세뷰 네비게이션
@@ -334,8 +365,15 @@ HoldingOpinion (보유 기준, 별도 뱃지):
   매도:     bg-red-500/10 text-red-400
 
 추천 source 뱃지:
-  수동 추천: bg-purple-500/10 text-purple-400
-  알고리즘:  bg-blue-500/10 text-blue-400
+  전문가 선정 (manual): bg-purple-500/10 text-purple-400 + tooltip "전문가가 직접 선정한 종목이에요"
+  알고리즘:             bg-blue-500/10 text-blue-400 + tooltip "10가지 지표로 자동 분석한 종목이에요"
+
+알림 뱃지 (ALERT_TYPE_LABELS):
+  sell_signal:  🔴 매도 신호    (priority: high, border-l-red-500/50)
+  sma5_break:   📉 단기 하락    (priority: medium)
+  sma5_touch:   💡 매수 타이밍  (priority: medium)
+  target_near:  🎯 목표가 근접  (priority: high, border-l-red-500/50)
+  undervalued:  💎 저평가 신호  (priority: low)
 ```
 
 ### 컬러 팔레트 (다크 테마)

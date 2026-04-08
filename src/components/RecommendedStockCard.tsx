@@ -46,7 +46,9 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
             <ArrowRight size={14} className="text-slate-600" />
           </div>
           <div className="text-center flex-1">
-            <p className="text-xs text-emerald-500/70 uppercase tracking-widest mb-1">적정가 (전문가 예상 가격)</p>
+            <p className="text-xs text-emerald-500/70 uppercase tracking-widest mb-1">
+              {stock.targetPrice && stock.fairPrice === stock.targetPrice ? '적정가 (애널리스트)' : '적정가 (추정)'}
+            </p>
             <p className="text-sm font-bold text-emerald-400">
               ₩{stock.fairPrice?.toLocaleString()}
             </p>
@@ -60,17 +62,26 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
         )}
       </div>
 
-      {/* Footer: Opinion Badge */}
-      <div className="flex items-center justify-between">
-        {stock.market_opinion && (
-          <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
-            stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
-            stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
-            'bg-slate-500/10 text-slate-400'
-          }`}>
-            {stock.market_opinion}
-          </span>
-        )}
+      {/* Footer: Source Badge + Opinion */}
+      <div className="flex items-center justify-between flex-wrap gap-y-1">
+        <div className="flex items-center space-x-1.5">
+          {stock.source && (
+            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+              stock.source === 'manual' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'
+            }`} title={stock.source === 'manual' ? '전문가가 직접 선정한 종목이에요. 투자 결정은 본인이 하세요.' : '10가지 지표로 자동 분석한 종목이에요. 과거 성과가 미래를 보장하지 않아요.'}>
+              {stock.source === 'manual' ? '전문가 선정' : '알고리즘'}
+            </span>
+          )}
+          {stock.market_opinion && (
+            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+              stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+              stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
+              'bg-slate-500/10 text-slate-400'
+            }`}>
+              {stock.market_opinion}
+            </span>
+          )}
+        </div>
         <span className="text-xs text-slate-600 group-hover:text-blue-400 transition-colors font-semibold">
           상세 분석 →
         </span>

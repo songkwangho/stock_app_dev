@@ -231,8 +231,46 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                   <p className={`text-xl font-black ${parseFloat(profitRate) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                     {parseFloat(profitRate) >= 0 ? '+' : ''}{profitRate}%
                   </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {parseFloat(profitRate) >= 10 ? '잘 하고 계세요!' :
+                     parseFloat(profitRate) >= 0 ? '조금씩 오르고 있어요' :
+                     parseFloat(profitRate) > -7 ? '조금 기다려볼까요?' :
+                     '손절 기준에 근접했어요'}
+                  </p>
                 </div>
               </div>
+
+              {/* Opinion Badges */}
+              {(stock.holding_opinion || stock.market_opinion) && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {stock.holding_opinion && (
+                    <div className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
+                      stock.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                      stock.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                      stock.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                      'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                    }`}>
+                      {stock.holding_opinion}
+                      <span className="font-normal text-slate-500 ml-1">
+                        {stock.holding_opinion === '매도' && stock.avgPrice && stock.currentPrice
+                          ? `(평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}%)`
+                          : stock.holding_opinion === '관망' ? '(20일선 지지 확인 중)'
+                          : stock.holding_opinion === '추가매수' ? '(5일선 근접 지지)'
+                          : '(정배열 유지)'}
+                      </span>
+                    </div>
+                  )}
+                  {stock.market_opinion && (
+                    <span className={`text-xs font-bold px-2 py-1.5 rounded-lg ${
+                      stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-400' :
+                      stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-400' :
+                      'bg-slate-500/10 text-slate-400'
+                    }`}>
+                      시장: {stock.market_opinion}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Info Grid */}
               {isEditing ? (

@@ -63,7 +63,7 @@ stock_app_dev/
 │   │   └── useStockStore.ts       # 레거시 re-export (3개 스토어 호환)
 │   ├── types/stock.ts        # TypeScript 인터페이스 (MarketOpinion/HoldingOpinion)
 │   ├── pages/                # 페이지 컴포넌트 (7개, lazy loading)
-│   └── components/           # 공용 컴포넌트 (5개)
+│   └── components/           # 공용 컴포넌트 (6개, ScoringBreakdownPanel 포함)
 ├── docs/
 │   ├── AI.md                 # AI 활용 내역
 │   ├── BACKEND.md            # 백엔드 상세 문서
@@ -98,6 +98,14 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
   - UI 네비게이션: `useNavigationStore`
   - 포트폴리오: `usePortfolioStore`
   - 알림: `useAlertStore`
+- **반응형 레이아웃**: PC 사이드바(`hidden md:flex`) + 모바일 하단 탭바(`fixed bottom-0 md:hidden`)
+- **초보자 UX 원칙** (구현 완료):
+  - PER/PBR/ROE 등 재무지표에 항상 한국어 컨텍스트 설명 병기
+  - `ScoringBreakdownPanel`로 10점 스코어를 게이지 바 + 한국어 해석으로 시각화
+  - 차트는 기본 라인 차트, 토글로 캔들 차트 전환 가능
+  - 알림 메시지에 아이콘 + 우선순위 강조, 수익률에 상황별 격려 메시지
+  - `holding_opinion` 뱃지에 이유(평단가 대비 %, 이평선 상태) 표시
+  - 추천 카드에 `source` 뱃지 + 신뢰도 설명 + fairPrice 출처 라벨
 
 ### 사용자 식별 (device_id 방식)
 - 로그인 없음. 기기 기반 익명 식별자로 개인 데이터 분리

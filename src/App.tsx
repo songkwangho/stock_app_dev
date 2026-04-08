@@ -19,12 +19,12 @@ const StockDetailView = lazy(() => import('./components/StockDetailView'));
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'));
 const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
 
-const ALERT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  sma5_break: { label: '5일선 이탈', color: 'text-red-400 bg-red-500/10' },
-  sma5_touch: { label: '5일선 지지', color: 'text-emerald-400 bg-emerald-500/10' },
-  target_near: { label: '목표가 근접', color: 'text-yellow-400 bg-yellow-500/10' },
-  undervalued: { label: '저평가', color: 'text-blue-400 bg-blue-500/10' },
-  sell_signal: { label: '매도 신호', color: 'text-red-400 bg-red-500/10' },
+const ALERT_TYPE_LABELS: Record<string, { label: string; icon: string; color: string; priority: string }> = {
+  sell_signal: { label: '매도 신호', icon: '🔴', color: 'text-red-400 bg-red-500/10', priority: 'high' },
+  sma5_break: { label: '단기 하락', icon: '📉', color: 'text-red-400 bg-red-500/10', priority: 'medium' },
+  sma5_touch: { label: '매수 타이밍', icon: '💡', color: 'text-emerald-400 bg-emerald-500/10', priority: 'medium' },
+  target_near: { label: '목표가 근접', icon: '🎯', color: 'text-yellow-400 bg-yellow-500/10', priority: 'high' },
+  undervalued: { label: '저평가 신호', icon: '💎', color: 'text-blue-400 bg-blue-500/10', priority: 'low' },
 };
 
 const App = () => {
@@ -110,8 +110,8 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-50 overflow-hidden font-sans">
-      {/* Sidebar */}
-      <aside className="w-68 border-r border-slate-800/60 flex flex-col bg-slate-950/50 backdrop-blur-xl">
+      {/* Sidebar — hidden on mobile */}
+      <aside className="hidden md:flex w-68 border-r border-slate-800/60 flex-col bg-slate-950/50 backdrop-blur-xl">
         <div className="p-8">
           <h1 className="text-2xl font-extrabold tracking-tight flex items-center space-x-2">
             <span className="bg-blue-600 p-1.5 rounded-lg"><Zap size={20} fill="white" color="white" /></span>
@@ -145,7 +145,7 @@ const App = () => {
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/5 blur-[120px] rounded-full -mr-48 -mt-48 pointer-events-none"></div>
 
-        <header className="h-20 border-b border-slate-800/40 px-10 flex items-center justify-between z-10">
+        <header className="h-16 md:h-20 border-b border-slate-800/40 px-4 md:px-10 flex items-center justify-between z-10">
           <div className="flex items-center space-x-6">
             {/* Market Indices */}
             {marketIndices.length > 0 && (
@@ -164,7 +164,7 @@ const App = () => {
               </div>
             )}
           <div className="relative">
-            <div className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl px-5 py-2.5 w-[420px] focus-within:border-blue-500/50 transition-all backdrop-blur-sm">
+            <div className="flex items-center bg-slate-900/40 border border-slate-800/60 rounded-2xl px-3 md:px-5 py-2.5 w-full md:w-[420px] focus-within:border-blue-500/50 transition-all backdrop-blur-sm">
               <Search size={18} className="text-slate-500 mr-3" />
               <input
                 type="text"
@@ -230,15 +230,16 @@ const App = () => {
                       </div>
                     ) : (
                       alerts.map((alert) => {
-                        const typeInfo = ALERT_TYPE_LABELS[alert.type] || { label: alert.type, color: 'text-slate-400 bg-slate-500/10' };
+                        const typeInfo = ALERT_TYPE_LABELS[alert.type] || { label: alert.type, icon: '📋', color: 'text-slate-400 bg-slate-500/10', priority: 'low' };
                         return (
-                          <div key={alert.id} className="px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors group">
+                          <div key={alert.id} className={`px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${typeInfo.priority === 'high' ? 'border-l-2 border-l-red-500/50' : ''}`}>
                             <div className="flex items-start justify-between mb-1">
                               <div className="flex items-center space-x-2">
+                                <span className="text-sm">{typeInfo.icon}</span>
                                 <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>
                                   {typeInfo.label}
                                 </span>
-                                <span className="text-xs text-slate-600">{alert.name}</span>
+                                <span className="text-xs text-slate-500 font-bold">{alert.name}</span>
                               </div>
                               <button
                                 onClick={() => handleDeleteAlert(alert.id)}
@@ -247,8 +248,8 @@ const App = () => {
                                 <Trash2 size={14} />
                               </button>
                             </div>
-                            <p className="text-xs text-slate-400 leading-relaxed">{alert.message}</p>
-                            <p className="text-xs text-slate-600 mt-1">
+                            <p className="text-xs text-slate-400 leading-relaxed pl-7">{alert.message}</p>
+                            <p className="text-xs text-slate-600 mt-1 pl-7">
                               {new Date(alert.created_at).toLocaleString('ko-KR')}
                             </p>
                           </div>
@@ -272,8 +273,8 @@ const App = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-10 relative">
-          <div className="max-w-7xl mx-auto pb-20">
+        <main className="flex-1 overflow-auto p-4 md:p-10 relative">
+          <div className="max-w-7xl mx-auto pb-24 md:pb-20">
             <Suspense fallback={
               <div className="flex items-center justify-center h-64 text-slate-500">
                 <RefreshCw className="animate-spin mr-2" size={20} />
@@ -294,6 +295,30 @@ const App = () => {
           </div>
         </main>
       </div>
+      {/* Mobile Bottom Tab Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/60 z-50">
+        <div className="flex items-center justify-around h-16">
+          {[
+            { tab: 'dashboard', icon: <LayoutDashboard size={20} />, label: '대시보드' },
+            { tab: 'analysis', icon: <TrendingUp size={20} />, label: '포트폴리오' },
+            { tab: 'recommendations', icon: <Star size={20} />, label: '추천' },
+            { tab: 'watchlist', icon: <Eye size={20} />, label: '관심종목' },
+            { tab: 'settings', icon: <Settings size={20} />, label: '설정' },
+          ].map(({ tab, icon, label }) => (
+            <button
+              key={tab}
+              onClick={() => navigateTo(tab)}
+              className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 transition-colors ${
+                activeTab === tab ? 'text-blue-400' : 'text-slate-500'
+              }`}
+            >
+              {icon}
+              <span className="text-xs font-bold">{label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
       {/* Global Toast */}
       <ToastContainer />
     </div>
