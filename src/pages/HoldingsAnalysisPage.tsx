@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react';
+import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle } from 'lucide-react';
 import StockSearchInput from '../components/StockSearchInput';
 import type { Holding, StockSummary } from '../types/stock';
 

@@ -1,17 +1,8 @@
 import axios from 'axios';
 import { useToastStore } from '../stores/useToastStore';
+import { getDeviceId } from '../storage/deviceId';
 
 const API_BASE_URL = 'http://localhost:3001/api';
-
-// Device-based anonymous identification
-function getDeviceId(): string {
-    let id = localStorage.getItem('device_id');
-    if (!id) {
-        id = crypto.randomUUID();
-        localStorage.setItem('device_id', id);
-    }
-    return id;
-}
 
 // Attach X-Device-Id header to every request
 axios.interceptors.request.use((config) => {

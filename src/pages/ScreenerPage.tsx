@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, Search, HelpCircle, Zap, TrendingUp } from 'lucide-react';
+import { RefreshCw, Search, HelpCircle } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
 import type { Stock, StockSummary } from '../types/stock';
 
@@ -249,11 +249,11 @@ const ScreenerPage = ({ onDetailClick }: ScreenerPageProps) => {
                       </td>
                       <td className="text-center px-4 py-4">
                         <span className={`text-xs font-bold px-4 py-3 rounded-lg ${
-                          stock.opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
-                          stock.opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
-                          'bg-blue-500/10 text-blue-400'
+                          stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+                          stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
+                          'bg-slate-500/10 text-slate-400'
                         }`}>
-                          {stock.opinion || '중립적'}
+                          {stock.market_opinion || '중립적'}
                         </span>
                       </td>
                     </tr>

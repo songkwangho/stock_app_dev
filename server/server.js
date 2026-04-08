@@ -304,6 +304,16 @@ try {
     console.error('Migration error (stock_analysis.chart_path):', e.message);
 }
 
+// Migration: Add source column to recommended_stocks if missing
+try {
+    const columns = db.prepare("PRAGMA table_info(recommended_stocks)").all();
+    if (!columns.some(col => col.name === 'source')) {
+        db.prepare("ALTER TABLE recommended_stocks ADD COLUMN source TEXT DEFAULT 'manual'").run();
+    }
+} catch (e) {
+    console.error('Migration error (recommended_stocks.source):', e.message);
+}
+
 // Cleanup function for data older than 20 days
 function cleanupOldData() {
     console.log('Running cleanup for data older than 20 days...');
@@ -629,17 +639,27 @@ async function captureChart(code) {
 syncAllStocks();
 scheduleDaily8AM();
 
-// Alert generation: check conditions and create alerts (avoid duplicates within 24h)
-function generateAlerts(code, name, price, sma5, targetPrice, opinion) {
+// Alert cooldown per type (in milliseconds)
+const ALERT_COOLDOWNS = {
+    sell_signal: 48 * 60 * 60 * 1000,  // 48h
+    sma5_break: 24 * 60 * 60 * 1000,   // 24h
+    sma5_touch: 24 * 60 * 60 * 1000,   // 24h
+    target_near: 12 * 60 * 60 * 1000,  // 12h
+    undervalued: 24 * 60 * 60 * 1000,  // 24h
+};
+
+// Alert generation: check conditions and create alerts (type-specific cooldown)
+function generateAlerts(code, name, price, sma5, targetPrice, market_opinion) {
     // Generate alerts for all device_ids that hold this stock
     const holders = db.prepare('SELECT DISTINCT device_id FROM holding_stocks WHERE code = ?').all(code);
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     for (const { device_id } of holders) {
         const hasDuplicate = (type) => {
+            const cooldown = ALERT_COOLDOWNS[type] || 24 * 60 * 60 * 1000;
+            const cutoff = new Date(Date.now() - cooldown).toISOString();
             return db.prepare(
                 'SELECT 1 FROM alerts WHERE device_id = ? AND code = ? AND type = ? AND created_at > ?'
-            ).get(device_id, code, type, oneDayAgo);
+            ).get(device_id, code, type, cutoff);
         };
 
         // Holding alerts
@@ -658,10 +678,15 @@ function generateAlerts(code, name, price, sma5, targetPrice, opinion) {
             }
         }
 
-        if (opinion === '매도' && !hasDuplicate('sell_signal')) {
+        // sell_signal: when both 5MA AND 20MA broken (이중 이탈)
+        const sma20ForAlert = (() => {
+            const hist = db.prepare('SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20').all(code);
+            return hist.length >= 20 ? Math.round(hist.reduce((s, r) => s + r.price, 0) / 20) : null;
+        })();
+        if (sma5 && sma20ForAlert && price < sma5 && price < sma20ForAlert && !hasDuplicate('sell_signal')) {
             db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                 device_id, code, name, 'sell_signal',
-                `${name}(${code}) 분석 의견이 "매도"로 전환되었습니다. 포지션 점검이 필요합니다.`
+                `${name}(${code}) 주가가 5일선과 20일선을 모두 이탈했습니다. 매도를 검토해 주세요.`
             );
         }
     }
@@ -679,9 +704,11 @@ function generateAlerts(code, name, price, sma5, targetPrice, opinion) {
     if (targetPrice && price > 0) {
         for (const { device_id } of watchers) {
             const hasDuplicate = (type) => {
+                const cooldown = ALERT_COOLDOWNS[type] || 24 * 60 * 60 * 1000;
+                const cutoff = new Date(Date.now() - cooldown).toISOString();
                 return db.prepare(
                     'SELECT 1 FROM alerts WHERE device_id = ? AND code = ? AND type = ? AND created_at > ?'
-                ).get(device_id, code, type, oneDayAgo);
+                ).get(device_id, code, type, cutoff);
             };
 
             if (price >= targetPrice * 0.95 && !hasDuplicate('target_near')) {
@@ -921,53 +948,13 @@ async function getStockData(code, fallbackName = null) {
         const sma5 = getSMA(5);
         const sma20 = getSMA(20);
 
-        const isHolding = db.prepare('SELECT 1 FROM holding_stocks WHERE code = ? LIMIT 1').get(code);
-
         let analysis = '';
         let advice = '';
-        let opinion = '중립적';
+        let market_opinion = '중립적'; // MarketOpinion: always calculated via 10-point scoring
         let scoringBreakdown = null;
 
-        if (isHolding) {
-            // Holding stock: multi-condition logic (5MA + 20MA + stop-loss)
-            const holdingInfo = db.prepare(
-                'SELECT avg_price FROM holding_stocks WHERE code = ? LIMIT 1'
-            ).get(code);
-            const avgPrice = holdingInfo?.avg_price || latestPrice;
-            const lossRate = (latestPrice - avgPrice) / avgPrice;
-            const STOP_LOSS = -0.07;
-
-            if (lossRate <= STOP_LOSS) {
-                opinion = '매도';
-                analysis = `현재 주가(${latestPrice.toLocaleString()}원)가 평균 매입가(${avgPrice.toLocaleString()}원) 대비 ${(lossRate * 100).toFixed(1)}% 하락하여 손절 기준(-7%)을 초과했습니다.`;
-                advice = '손실 확대를 방지하기 위해 비중 축소 또는 매도를 권장합니다.';
-            } else if (sma5 && sma20 && latestPrice < sma5 && latestPrice < sma20) {
-                opinion = '매도';
-                analysis = `주가가 5일선(${sma5.toLocaleString()}원)과 20일선(${sma20.toLocaleString()}원)을 모두 하향 이탈하여 추세가 크게 약화되었습니다.`;
-                advice = '이중 이평선 이탈은 강한 매도 신호입니다. 비중 축소를 권장합니다.';
-            } else if (sma5 && sma20 && latestPrice < sma5 && latestPrice >= sma20) {
-                opinion = '관망';
-                analysis = `주가가 5일선(${sma5.toLocaleString()}원)을 이탈했으나 20일선(${sma20.toLocaleString()}원) 위에서 지지 중입니다.`;
-                advice = '20일선 지지 여부를 확인 후 대응하세요. 이탈 시 매도, 반등 시 보유가 적절합니다.';
-            } else if (sma5 && latestPrice >= sma5 && latestPrice <= sma5 * 1.01) {
-                opinion = '추가매수';
-                analysis = `현재 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있는 안전한 타점입니다.`;
-                advice = '5일선 터치 및 지지 시점이므로 비중 확대를 고려할 수 있습니다.';
-            } else if (sma5 && sma20 && latestPrice > sma5 && sma5 > sma20) {
-                opinion = '보유';
-                analysis = `주가가 5일선과 20일선 위에서 정배열 추세를 유지하고 있습니다. 매우 건강한 차트 구조입니다.`;
-                advice = '추세가 강하게 유지되고 있으므로 기존 물량을 보유하며 수익을 극대화하세요.';
-            } else if (!sma5) {
-                opinion = '보유';
-                analysis = '데이터가 충분하지 않으나 현재 추세를 유지하고 있습니다.';
-                advice = '추세 유지 시 보유 전략을 권장합니다.';
-            } else {
-                opinion = '보유';
-                analysis = `주가가 5일선(${sma5.toLocaleString()}원) 위에서 유지되고 있습니다.`;
-                advice = '추세 유지 시 보유 전략을 권장합니다.';
-            }
-        } else {
-            // Non-holding: 10-point integrated scoring system
+        // Always calculate MarketOpinion (10-point scoring) for all stocks
+        {
             const valuation = calculateValuationScore(code, per, pbr, roe, latestPrice, targetPrice, epsCurrent, epsPrevious);
             const technical = calculateTechnicalScore(code);
             const supplyDemand = calculateSupplyDemandScore(code);
@@ -980,6 +967,8 @@ async function getStockData(code, fallbackName = null) {
                 supplyDemand: supplyDemand.total,
                 trend: trend.total,
                 total: totalScore,
+                per_negative: per !== null && per !== undefined && per < 0,
+                low_confidence: valuation.detail?.low_confidence || false,
                 detail: {
                     valuation: valuation.detail,
                     technical: technical.detail,
@@ -999,19 +988,19 @@ async function getStockData(code, fallbackName = null) {
             analysis += `[종합점수 ${totalScore}/10] 밸류에이션 ${valuation.total}/3, 기술지표 ${technical.total}/3, 수급 ${supplyDemand.total}/2, 추세 ${trend.total}/2.`;
 
             if (totalScore >= 7.0) {
-                opinion = '긍정적';
+                market_opinion = '긍정적';
                 advice = `종합점수 ${totalScore}점으로 매수에 유리한 조건입니다. `;
                 advice += valuation.total >= 2 ? '밸류에이션이 섹터 대비 저평가 상태이며, ' : '';
                 advice += technical.total >= 2 ? '기술적 지표도 매수를 지지합니다. ' : '';
                 advice += supplyDemand.total >= 1.5 ? '외국인/기관의 연속 순매수도 긍정적입니다.' : '';
             } else if (totalScore >= 4.0) {
-                opinion = '중립적';
+                market_opinion = '중립적';
                 advice = `종합점수 ${totalScore}점으로 적극적 매수보다는 관망이 적절합니다. `;
                 if (valuation.total < 1) advice += '밸류에이션 매력이 부족하거나 ';
                 if (technical.total < 1) advice += '기술적 지표가 약세를 보이고 있어 ';
                 advice += '분할매수 관점에서 접근을 권장합니다.';
             } else {
-                opinion = '부정적';
+                market_opinion = '부정적';
                 advice = `종합점수 ${totalScore}점으로 보수적 접근이 필요합니다. `;
                 if (valuation.total < 1) advice += '밸류에이션 부담이 크고, ';
                 if (technical.total < 1) advice += '기술적 지표가 주의 신호를 보내고 있으며, ';
@@ -1028,8 +1017,9 @@ async function getStockData(code, fallbackName = null) {
         console.log(`Saving analysis for ${code} with chartPath: ${chartPath}`);
 
         // Generate alerts for significant events
-        generateAlerts(code, nameToSave, latestPrice, sma5, targetPrice, opinion);
+        generateAlerts(code, nameToSave, latestPrice, sma5, targetPrice, market_opinion);
 
+        // Save MarketOpinion to DB (공용, 비보유 기준)
         db.prepare(`
             INSERT INTO stock_analysis (code, analysis, advice, opinion, toss_url, chart_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1040,7 +1030,7 @@ async function getStockData(code, fallbackName = null) {
                 toss_url = excluded.toss_url,
                 chart_path = excluded.chart_path,
                 created_at = CURRENT_TIMESTAMP
-        `).run(code, analysis, advice, opinion, tossUrl, chartPath);
+        `).run(code, analysis, advice, market_opinion, tossUrl, chartPath);
 
         const result = {
             code,
@@ -1053,7 +1043,7 @@ async function getStockData(code, fallbackName = null) {
             investorData,
             analysis,
             advice,
-            opinion,
+            market_opinion,
             tossUrl,
             chartPath,
             scoringBreakdown
@@ -1072,7 +1062,7 @@ async function getStockData(code, fallbackName = null) {
             investorData: [],
             analysis: analysisData?.analysis,
             advice: analysisData?.advice,
-            opinion: analysisData?.opinion,
+            market_opinion: analysisData?.opinion,
             tossUrl: analysisData?.toss_url,
             chartPath: analysisData?.chart_path
         } : null;
@@ -1114,18 +1104,49 @@ app.post('/api/stock/:code/refresh', async (req, res) => {
     }
 });
 
+// Calculate HoldingOpinion at runtime (not saved to DB)
+function calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20) {
+    if (!avgPrice || !currentPrice) return '보유';
+    const lossRate = (currentPrice - avgPrice) / avgPrice;
+    const STOP_LOSS = -0.07;
+
+    if (lossRate <= STOP_LOSS) return '매도';
+    if (sma5 && sma20 && currentPrice < sma5 && currentPrice < sma20) return '매도';
+    if (sma5 && sma20 && currentPrice < sma5 && currentPrice >= sma20) return '관망';
+    if (sma5 && currentPrice >= sma5 && currentPrice <= sma5 * 1.01) return '추가매수';
+    if (sma5 && sma20 && currentPrice > sma5 && sma5 > sma20) return '보유';
+    return '보유';
+}
+
 // API Endpoints for Holdings (Portfolio) - device_id scoped
 app.get('/api/holdings', async (req, res) => {
     const deviceId = requireDeviceId(req, res);
     if (!deviceId) return;
     try {
         const holdings = db.prepare(`
-            SELECT s.*, h.avg_price, h.weight, h.quantity
+            SELECT s.*, h.avg_price, h.weight, h.quantity, a.opinion AS market_opinion
             FROM stocks s
             JOIN holding_stocks h ON s.code = h.code
+            LEFT JOIN stock_analysis a ON s.code = a.code
             WHERE h.device_id = ?
         `).all(deviceId);
-        res.json(holdings);
+
+        // Calculate holding_opinion at runtime for each holding
+        const enriched = holdings.map(h => {
+            const history = db.prepare(
+                'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20'
+            ).all(h.code);
+            let sma5 = null, sma20 = null;
+            if (history.length >= 5) sma5 = Math.round(history.slice(0, 5).reduce((s, r) => s + r.price, 0) / 5);
+            if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
+            return {
+                ...h,
+                market_opinion: h.market_opinion || '중립적',
+                holding_opinion: calculateHoldingOpinion(h.avg_price, h.price, sma5, sma20),
+            };
+        });
+
+        res.json(enriched);
     } catch (error) {
         console.error('Holdings GET Error:', error.message);
         res.status(500).json({ error: 'Failed to fetch holdings' });
@@ -1203,7 +1224,7 @@ app.delete('/api/holdings/:code', (req, res) => {
 app.get('/api/stocks', (req, res) => {
     try {
         const stocks = db.prepare(`
-            SELECT s.*, a.opinion
+            SELECT s.*, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
             ORDER BY s.category, s.name
@@ -1212,7 +1233,7 @@ app.get('/api/stocks', (req, res) => {
         const results = stocks.map(s => ({
             ...s,
             price: s.price || 0,
-            opinion: s.opinion || '중립적'
+            market_opinion: s.market_opinion || '중립적'
         }));
         res.json(results);
     } catch (error) {
@@ -1303,8 +1324,8 @@ app.get('/api/recommendations', async (req, res) => {
             WHERE a.opinion = '긍정적'
         `).all();
 
-        // 3. Merge and deduplicate
-        const combined = [...manualRecs];
+        // 3. Merge and deduplicate, marking source
+        const combined = [...manualRecs.map(r => ({ ...r, source: r.source || 'manual' }))];
         for (const ar of analysisRecs) {
             if (!combined.some(c => c.code === ar.code)) {
                 combined.push({
@@ -1313,7 +1334,8 @@ app.get('/api/recommendations', async (req, res) => {
                     fair_price: ar.fair_price || 0,
                     score: ar.score,
                     name: ar.name,
-                    category: ar.category
+                    category: ar.category,
+                    source: 'algorithm'
                 });
             }
         }
@@ -1351,14 +1373,15 @@ app.get('/api/recommendations', async (req, res) => {
                 probability: Math.min(100, Math.round((fairPrice / currentPrice) * 50 + (rec.score / 2))),
                 analysis: stockData.analysis,
                 advice: stockData.advice,
-                opinion: stockData.opinion,
+                market_opinion: stockData.market_opinion,
+                source: rec.source || 'manual',
                 tossUrl: stockData.tossUrl,
                 chartPath: stockData.chartPath
             };
         }));
 
         // Filter and sort
-        const filteredResults = results.filter(r => r !== null && r.opinion === '긍정적').sort((a, b) => b.score - a.score);
+        const filteredResults = results.filter(r => r !== null && r.market_opinion === '긍정적').sort((a, b) => b.score - a.score);
 
         res.json(filteredResults);
     } catch (error) {
@@ -1523,7 +1546,7 @@ app.get('/api/watchlist', (req, res) => {
     if (!deviceId) return;
     try {
         const items = db.prepare(`
-            SELECT s.code, s.name, s.category, s.price, a.opinion, w.added_at
+            SELECT s.code, s.name, s.category, s.price, a.opinion AS market_opinion, w.added_at
             FROM watchlist w
             JOIN stocks s ON w.code = s.code
             LEFT JOIN stock_analysis a ON s.code = a.code
@@ -1548,7 +1571,7 @@ app.post('/api/watchlist', async (req, res) => {
             ON CONFLICT(device_id, code) DO NOTHING
         `).run(deviceId, code);
         const item = db.prepare(`
-            SELECT s.code, s.name, s.category, s.price, a.opinion
+            SELECT s.code, s.name, s.category, s.price, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
             WHERE s.code = ?
@@ -1583,13 +1606,20 @@ function median(arr) {
 function calculateValuationScore(code, per, pbr, roe, price, targetPrice, epsCurrent, epsPrevious) {
     const stock = db.prepare('SELECT category FROM stocks WHERE code = ?').get(code);
     const category = stock?.category;
+    let per_negative = false;
+    let low_confidence = false;
 
     // Sub-A: PER vs Sector Median (0~1.0)
     let perScore = 0;
-    if (per && per > 0 && category) {
+    if (per !== null && per !== undefined && per < 0) {
+        // PER 음수 (적자 기업): 0점 고정
+        perScore = 0;
+        per_negative = true;
+    } else if (per && per > 0 && category) {
         const peers = db.prepare(
             'SELECT per FROM stocks WHERE category = ? AND per > 0 AND per < 200 AND code != ?'
         ).all(category, code).map(r => r.per);
+        if (peers.length < 5) low_confidence = true;
         if (peers.length >= 3) {
             const sectorPer = median(peers);
             if (per < sectorPer * 0.7) perScore = 1.0;
@@ -1608,6 +1638,7 @@ function calculateValuationScore(code, per, pbr, roe, price, targetPrice, epsCur
         const peers = db.prepare(
             'SELECT pbr FROM stocks WHERE category = ? AND pbr > 0 AND pbr < 20 AND code != ?'
         ).all(category, code).map(r => r.pbr);
+        if (peers.length < 5 && !low_confidence) low_confidence = true;
         if (peers.length >= 3) {
             const sectorPbr = median(peers);
             if (pbr < sectorPbr * 0.7) pbrScore = 1.0;
@@ -1618,6 +1649,7 @@ function calculateValuationScore(code, per, pbr, roe, price, targetPrice, epsCur
 
     // Sub-C: PEG Ratio (0~1.0)
     let pegScore = 0;
+    let pegInvalid = false;
     if (epsCurrent && epsPrevious && Math.abs(epsPrevious) > 0 && per && per > 0) {
         const epsGrowth = (epsCurrent - epsPrevious) / Math.abs(epsPrevious) * 100;
         if (epsGrowth > 0) {
@@ -1626,16 +1658,35 @@ function calculateValuationScore(code, per, pbr, roe, price, targetPrice, epsCur
             else if (peg < 1.0) pegScore = 0.75;
             else if (peg < 1.5) pegScore = 0.5;
             else if (peg < 2.0) pegScore = 0.25;
+        } else {
+            // EPS 성장률 ≤ 0: PEG 무효
+            pegInvalid = true;
         }
     } else if (roe && roe > 15) {
         pegScore = 0.5;
     } else if (roe && roe > 10) {
         pegScore = 0.25;
+    } else {
+        pegInvalid = true;
+    }
+
+    // PEG 무효 시 밸류에이션 2점 만점으로 재정규화 (PER + PBR만 사용, 3점 스케일로)
+    let total;
+    if (pegInvalid) {
+        total = parseFloat(((perScore + pbrScore) / 2.0 * 3.0).toFixed(2));
+    } else {
+        total = parseFloat((perScore + pbrScore + pegScore).toFixed(2));
     }
 
     return {
-        total: parseFloat((perScore + pbrScore + pegScore).toFixed(2)),
-        detail: { perScore: parseFloat(perScore.toFixed(2)), pbrScore: parseFloat(pbrScore.toFixed(2)), pegScore: parseFloat(pegScore.toFixed(2)) }
+        total: Math.min(3.0, total),
+        detail: {
+            perScore: parseFloat(perScore.toFixed(2)),
+            pbrScore: parseFloat(pbrScore.toFixed(2)),
+            pegScore: parseFloat(pegScore.toFixed(2)),
+            per_negative,
+            low_confidence
+        }
     };
 }
 
@@ -1651,7 +1702,7 @@ function calculateTechnicalScore(code) {
     const latestPrice = prices[prices.length - 1];
     const prevPrice = prices[prices.length - 2];
 
-    // RSI Score (0~1.0): oversold = high score
+    // RSI Score (0~1.0): oversold = high score + 30~50 recovery correction
     let rsiScore = 0.5;
     if (prices.length >= 15) {
         let gains = 0, losses = 0;
@@ -1662,6 +1713,11 @@ function calculateTechnicalScore(code) {
         const avgGain = gains / 14, avgLoss = losses / 14;
         const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
         rsiScore = Math.max(0, Math.min(1, (70 - rsi) / 40));
+        // RSI 30~50 구간: 과매도 회복 신호 보정 (+0.3 가중 보너스)
+        if (rsi >= 30 && rsi <= 50) {
+            rsiScore += (50 - rsi) / 20 * 0.3;
+            rsiScore = Math.min(1, rsiScore);
+        }
     }
 
     // MACD Score (0~1.0): positive & increasing histogram = high score
@@ -1702,7 +1758,8 @@ function calculateTechnicalScore(code) {
             const upper = sma20 + 2 * stdDev;
             const lower = sma20 - 2 * stdDev;
             const percentB = (latestPrice - lower) / (upper - lower) * 100;
-            bollingerScore = Math.max(0, Math.min(1, (80 - percentB) / 70));
+            // 정규화: %B 0~100을 0~1 스코어로 변환 (하단 근접 = 높은 점수)
+            bollingerScore = Math.max(0, Math.min(1, (80 - percentB) / 80));
         }
     }
 
@@ -1716,8 +1773,8 @@ function calculateTechnicalScore(code) {
             if (priceUp && volumeRatio > 1.5) volumeScore = 1.0;
             else if (priceUp && volumeRatio > 1.0) volumeScore = 0.7;
             else if (priceUp) volumeScore = 0.4;
-            else if (!priceUp && volumeRatio > 1.5) volumeScore = 0.0;
-            else if (!priceUp) volumeScore = 0.3;
+            else if (!priceUp && volumeRatio > 1.5) volumeScore = 0.0; // 패닉 매도
+            else volumeScore = 0.2; // 하락 + 기타
         }
     }
 
@@ -1895,7 +1952,7 @@ app.get('/api/screener', (req, res) => {
     try {
         const { perMax, perMin, pbrMax, pbrMin, roeMin, priceMin, priceMax, category } = req.query;
         let sql = `
-            SELECT s.*, a.opinion
+            SELECT s.*, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
             WHERE s.price > 0
@@ -2028,7 +2085,7 @@ app.get('/api/sector/:category/compare', (req, res) => {
     const { category } = req.params;
     try {
         const stocks = db.prepare(`
-            SELECT s.code, s.name, s.price, s.per, s.pbr, s.roe, s.target_price, a.opinion
+            SELECT s.code, s.name, s.price, s.per, s.pbr, s.roe, s.target_price, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
             WHERE s.category = ? AND s.price > 0

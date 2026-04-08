@@ -336,9 +336,9 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[priceMin, priceMax]} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
                     <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '12px' }}
-                      formatter={(value: number, name: string) => {
+                      formatter={(value: number | undefined, name: string | undefined) => {
                         const labels: Record<string, string> = { price: '종가', open: '시가', high: '고가', low: '저가', sma5: '5일 평균', sma20: '20일 평균' };
-                        return [`₩${value?.toLocaleString() || '---'}`, labels[name] || name];
+                        return [`₩${value?.toLocaleString() || '---'}`, labels[name || ''] || name || ''];
                       }} />
                     <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
                     {/* Candlestick body as bar */}
@@ -640,12 +640,27 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               <div className="space-y-6 text-sm text-slate-300 leading-relaxed mb-6">
                 <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-4">
                   <p className="text-xs text-slate-500 uppercase tracking-widest mb-2 font-bold">종합 의견</p>
-                  <div className="flex items-center space-x-2">
-                    <span className={`text-lg font-black px-3 py-1 rounded-lg ${
-                      stockDetail?.opinion === '긍정적' || stockDetail?.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
-                      stockDetail?.opinion === '부정적' || stockDetail?.opinion === '매도' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-400'
-                    }`}>{stockDetail?.opinion || '분석 중'}</span>
-                    <span className="text-xs text-slate-500">{isHolding ? '보유 종목 대응 전략' : '신규 투자 유망도'}</span>
+                  <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+                    {/* Market Opinion (시장 기준) */}
+                    <div className="flex items-center space-x-1.5">
+                      <span className={`text-lg font-black px-3 py-1 rounded-lg ${
+                        stockDetail?.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+                        stockDetail?.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' : 'bg-slate-500/10 text-slate-400'
+                      }`}>{stockDetail?.market_opinion || '분석 중'}</span>
+                      <span className="text-xs text-slate-500">시장 분석</span>
+                    </div>
+                    {/* Holding Opinion (보유 기준, 보유 시에만) */}
+                    {isHolding && stock.avgPrice && (
+                      <div className="flex items-center space-x-1.5">
+                        <span className={`text-lg font-black px-3 py-1 rounded-lg border ${
+                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                          'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        }`}>{(stockDetail as unknown as { holding_opinion?: string })?.holding_opinion || '보유'}</span>
+                        <span className="text-xs text-slate-500">보유 전략</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

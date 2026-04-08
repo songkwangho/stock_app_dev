@@ -113,17 +113,15 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
                   <p className="text-lg font-black">{item.price ? `₩${item.price.toLocaleString()}` : '---'}</p>
                 </div>
                 <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
-                  item.opinion === '긍정적' || item.opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-500' :
-                  item.opinion === '부정적' || item.opinion === '매도' ? 'bg-red-500/10 text-red-500' :
-                  'bg-blue-500/10 text-blue-400'
+                  item.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+                  item.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
+                  'bg-slate-500/10 text-slate-400'
                 }`} title={
-                  item.opinion === '긍정적' ? '현재 저평가 상태로 매수 기회일 수 있어요' :
-                  item.opinion === '추가매수' ? '추가 매수를 고려해볼 만한 상태예요' :
-                  item.opinion === '부정적' ? '하락 추세이거나 고평가 상태예요' :
-                  item.opinion === '매도' ? '매도를 고려해볼 만한 상태예요' :
+                  item.market_opinion === '긍정적' ? '현재 저평가 상태로 매수 기회일 수 있어요' :
+                  item.market_opinion === '부정적' ? '하락 추세이거나 고평가 상태예요' :
                   '뚜렷한 방향 없이 보합 상태예요'
                 }>
-                  {item.opinion || '중립적'}
+                  {item.market_opinion || '중립적'}
                 </span>
               </div>
             </div>

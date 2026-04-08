@@ -62,13 +62,13 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
 
       {/* Footer: Opinion Badge */}
       <div className="flex items-center justify-between">
-        {stock.opinion && (
+        {stock.market_opinion && (
           <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
-            stock.opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
-            stock.opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
+            stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+            stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
             'bg-slate-500/10 text-slate-400'
           }`}>
-            {stock.opinion}
+            {stock.market_opinion}
           </span>
         )}
         <span className="text-xs text-slate-600 group-hover:text-blue-400 transition-colors font-semibold">

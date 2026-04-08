@@ -130,7 +130,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
                     <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
-                      formatter={(value: number) => [`₩${value.toLocaleString()}`, '포트폴리오 가치']}
+                      formatter={(value: number | undefined) => [`₩${(value ?? 0).toLocaleString()}`, '포트폴리오 가치']}
                     />
                     <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
                   </AreaChart>

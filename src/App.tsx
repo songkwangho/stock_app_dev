@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, TrendingUp, Settings, Star, Search, Bell, RefreshCw, Zap, Layers, Trash2, X, Eye, Filter
 } from 'lucide-react';
 import { stockApi } from './api/stockApi';
-import { useStockStore } from './stores/useStockStore';
+import { useNavigationStore } from './stores/useNavigationStore';
+import { usePortfolioStore } from './stores/usePortfolioStore';
+import { useAlertStore } from './stores/useAlertStore';
 import { useToastStore } from './stores/useToastStore';
 import NavButton from './components/NavButton';
-import type { StockSummary, Alert, MarketIndex } from './types/stock';
+import type { StockSummary, MarketIndex } from './types/stock';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const HoldingsAnalysisPage = lazy(() => import('./pages/HoldingsAnalysisPage'));
@@ -26,11 +28,9 @@ const ALERT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const App = () => {
-  const {
-    activeTab, selectedStock, holdings,
-    navigateTo, handleDetailClick,
-    fetchHoldings, addHolding, updateHolding, deleteHolding,
-  } = useStockStore();
+  const { activeTab, selectedStock, navigateTo, handleDetailClick, goBack } = useNavigationStore();
+  const { holdings, fetchHoldings, addHolding, updateHolding, deleteHolding } = usePortfolioStore();
+  const { alerts, unreadCount, fetchAlerts, fetchUnreadCount, markAllRead, deleteAlert } = useAlertStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StockSummary[]>([]);
@@ -42,12 +42,6 @@ const App = () => {
     localStorage.setItem('nickname', name);
   };
 
-  // Track the previous tab before entering detail view
-  const prevTabRef = useRef('dashboard');
-
-  // Alerts state
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
 
@@ -57,23 +51,17 @@ const App = () => {
 
   // Fetch unread count and market indices periodically
   useEffect(() => {
-    const fetchUnread = async () => {
-      try {
-        const data = await stockApi.getUnreadAlertCount();
-        setUnreadCount(data.count);
-      } catch { /* silent */ }
-    };
     const fetchIndices = async () => {
       try {
         const data = await stockApi.getMarketIndices();
         setMarketIndices(data);
       } catch { /* silent */ }
     };
-    fetchUnread();
+    fetchUnreadCount();
     fetchIndices();
-    const interval = setInterval(() => { fetchUnread(); fetchIndices(); }, 60000);
+    const interval = setInterval(() => { fetchUnreadCount(); fetchIndices(); }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchUnreadCount]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -95,48 +83,29 @@ const App = () => {
   }, [searchQuery]);
 
   const handleSearchSelect = (stock: StockSummary) => {
-    prevTabRef.current = activeTab;
     handleDetailClick(stock);
     setSearchQuery('');
     setSearchResults([]);
   };
 
   const handleNavDetailClick = (stock: StockSummary) => {
-    prevTabRef.current = activeTab;
     handleDetailClick(stock);
   };
 
   const handleBack = () => {
-    if (selectedStock?.category === '보유 종목') {
-      navigateTo('analysis');
-    } else {
-      navigateTo(prevTabRef.current === 'detail' ? 'dashboard' : prevTabRef.current);
-    }
+    goBack();
   };
 
   const handleToggleAlerts = async () => {
     if (!showAlerts) {
-      try {
-        const data = await stockApi.getAlerts();
-        setAlerts(data);
-        await stockApi.markAlertsRead();
-        setUnreadCount(0);
-      } catch (error) {
-        console.error('Failed to fetch alerts:', error);
-      }
+      await fetchAlerts();
+      await markAllRead();
     }
     setShowAlerts(!showAlerts);
   };
 
   const handleDeleteAlert = async (id: number) => {
-    const prev = alerts;
-    setAlerts(alerts.filter(a => a.id !== id)); // optimistic
-    try {
-      await stockApi.deleteAlert(id);
-    } catch (error) {
-      console.error('Failed to delete alert:', error);
-      setAlerts(prev); // rollback on failure
-    }
+    await deleteAlert(id);
   };
 
   return (

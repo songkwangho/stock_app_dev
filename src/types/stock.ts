@@ -1,3 +1,9 @@
+// 비보유 기준 10점 스코어링 결과 (공용, DB 저장)
+export type MarketOpinion = '긍정적' | '중립적' | '부정적';
+
+// 평단가 기반 5단계 판단 (개인화, 런타임 계산)
+export type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
+
 export interface Stock {
   code: string;
   name: string;
@@ -9,7 +15,7 @@ export interface Stock {
   pbr?: number;
   roe?: number;
   target_price?: number;
-  opinion?: string;
+  market_opinion?: MarketOpinion;
   last_updated?: string;
 }
 
@@ -20,6 +26,8 @@ export interface Holding {
   avgPrice: number;
   currentPrice: number;
   quantity: number;
+  holding_opinion?: HoldingOpinion;
+  market_opinion?: MarketOpinion;
 }
 
 export interface Recommendation {
@@ -38,6 +46,8 @@ export interface Recommendation {
   analysis?: string;
   advice?: string;
   opinion?: string;
+  market_opinion?: MarketOpinion;
+  source?: 'manual' | 'algorithm';
   tossUrl?: string;
   chartPath?: string;
 }
@@ -48,6 +58,8 @@ export interface ScoringBreakdown {
   supplyDemand: number;
   trend: number;
   total: number;
+  per_negative?: boolean;
+  low_confidence?: boolean;
   detail?: {
     valuation: { perScore: number; pbrScore: number; pegScore: number };
     technical: { rsiScore: number; macdScore: number; bollingerScore: number; volumeScore: number };
@@ -68,7 +80,7 @@ export interface StockDetail {
   investorData?: InvestorEntry[];
   analysis?: string;
   advice?: string;
-  opinion?: string;
+  market_opinion?: MarketOpinion;
   tossUrl?: string;
   chartPath?: string;
   scoringBreakdown?: ScoringBreakdown;
@@ -111,7 +123,8 @@ export interface StockSummary {
   avgPrice?: number;
   value?: number;
   currentPrice?: number;
-  opinion?: string;
+  quantity?: number;
+  market_opinion?: MarketOpinion;
   price?: number;
 }
 
@@ -138,7 +151,7 @@ export interface WatchlistItem {
   name: string;
   category: string;
   price: number;
-  opinion?: string;
+  market_opinion?: MarketOpinion;
   added_at: string;
 }
 
