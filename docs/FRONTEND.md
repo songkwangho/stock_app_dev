@@ -197,7 +197,8 @@ price → currentPrice
 | Stock | 종목 기본 | code, name, category, price, change, per, pbr, roe, target_price, opinion |
 | Holding | 보유종목 | code, name, value(비중), avgPrice, currentPrice, quantity |
 | Recommendation | 추천종목 | code, name, category, reason, score, fairPrice, currentPrice, 재무지표, analysis, advice |
-| StockDetail | 종목 상세 | Stock + history[], investorData[], analysis, tossUrl, chartPath |
+| ScoringBreakdown | 스코어링 상세 | valuation, technical, supplyDemand, trend, total, detail |
+| StockDetail | 종목 상세 | Stock + history[], investorData[], analysis, tossUrl, chartPath, scoringBreakdown? |
 | StockSummary | 종목 요약 | code, name, category, price, opinion, avgPrice? |
 | HistoryEntry | 가격 히스토리 | date, price, open, high, low, volume |
 | InvestorEntry | 투자자 동향 | date, institution, foreign, individual |

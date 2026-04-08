@@ -51,7 +51,7 @@ npm run lint         # ESLint 검사
 - 로그인 없음. 기기 기반 익명 식별자로 개인 데이터 분리
 - 프론트: 최초 실행 시 UUID v4 생성 → localStorage에 저장 → Axios 인터셉터로 모든 요청에 `X-Device-Id` 헤더 자동 첨부
 - 백엔드: `getDeviceId(req)` 헬퍼로 헤더에서 추출, 개인 데이터 테이블(holding_stocks, watchlist, alerts)에 device_id 컬럼 추가
-- 공용 데이터(stocks, stock_history, stock_analysis, recommended_stocks)는 device_id 무관
+- 공용 데이터(stocks, stock_history, stock_analysis, recommended_stocks, investor_history)는 device_id 무관
 
 ### 백엔드 원칙
 - 단일 파일 구조 (server/server.js)
@@ -65,25 +65,34 @@ npm run lint         # ESLint 검사
 3. 프론트에서 종목 상세 조회 시 캐시 우선, 만료 시 실시간 스크래핑
 4. 분석 결과(opinion)는 stock_analysis 테이블에 저장
 
-### 분석 알고리즘 요약
-- **보유 종목**: 5일선 기준 (위=보유, 근접=추가매수, 아래=매도)
-- **비보유 종목**: 밸류에이션(0-2) + 기술지표(0-2) + 추세(0-1) = 5점 만점
-  - 4점 이상: 긍정적 / 2점 이상: 중립적 / 2점 미만: 부정적
-- **기술지표**: RSI(14), MACD(12,26,9), 볼린저밴드(20,2)
+### 분석 알고리즘 요약 (10점 만점 통합 스코어링)
+- **보유 종목**: 5단계 우선순위 판단
+  1. 손절(-7% 평단가 대비) → 매도
+  2. 5MA + 20MA 동시 이탈 → 매도
+  3. 5MA 이탈 + 20MA 지지 → 관망
+  4. 5MA 근접 지지 → 추가매수
+  5. 정배열 유지 → 보유
+- **비보유 종목**: 밸류에이션(0-3) + 기술지표(0-3) + 수급(0-2) + 추세(0-2) = 10점 만점
+  - 7점 이상: 긍정적 / 4점 이상: 중립적 / 4점 미만: 부정적
+- **밸류에이션**: PER 섹터 중앙값 비교 + PBR 섹터 비교 + PEG(EPS 성장률 기반)
+- **기술지표**: RSI(14) 연속값 + MACD(12,26,9) 강도/방향 + 볼린저밴드(20,2) + 거래량(20일 평균 대비)
+- **수급**: 외국인/기관 연속 순매수 일수
+- **추세**: 5MA/20MA 배열 상태
 
 ## 영역별 문서 참조
 - 백엔드 작업 시: `docs/BACKEND.md` 참조
 - 프론트엔드 작업 시: `docs/FRONTEND.md` 참조
 - AI 활용 내역: `docs/AI.md` 참조
 
-## DB 테이블 (7개)
+## DB 테이블 (8개)
 | 테이블 | PK | device_id | 용도 |
 |--------|-----|-----------|------|
-| stocks | code | - | 종목 기본정보 + 재무지표 (공용) |
+| stocks | code | - | 종목 기본정보 + 재무지표 + EPS (공용) |
 | holding_stocks | device_id+code | O | 포트폴리오 보유종목 (개인) |
 | stock_history | code+date | - | 일일 OHLCV 히스토리 (공용) |
 | stock_analysis | code | - | 기술적 분석 결과/의견 (공용) |
 | recommended_stocks | code | - | 수동 추천 종목 (공용) |
+| investor_history | code+date | - | 투자자(외국인/기관) 매매 히스토리 (공용) |
 | alerts | id | O | 알림 (개인) |
 | watchlist | device_id+code | O | 관심종목 (개인) |
 

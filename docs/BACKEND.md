@@ -18,7 +18,7 @@
 - `getDeviceId(req)` 헬퍼: `req.headers['x-device-id']` 에서 추출
 - device_id가 없는 요청은 개인 데이터 API에서 400 에러 반환
 - 개인 데이터 테이블: `holding_stocks`, `watchlist`, `alerts`
-- 공용 데이터 테이블: `stocks`, `stock_history`, `stock_analysis`, `recommended_stocks`
+- 공용 데이터 테이블: `stocks`, `stock_history`, `stock_analysis`, `recommended_stocks`, `investor_history`
 
 ### 영향받는 API
 | API | 변경 내용 |
@@ -49,6 +49,8 @@
 | pbr | REAL | PBR |
 | roe | REAL | ROE |
 | target_price | INTEGER | 애널리스트 목표가 |
+| eps_current | REAL | 최신 연도 EPS (PEG 계산용) |
+| eps_previous | REAL | 전년도 EPS (PEG 계산용) |
 | last_updated | DATETIME | 최종 갱신 시각 |
 
 ### holding_stocks (포���폴리오) - 개인 데이터
@@ -80,7 +82,7 @@
 | code | TEXT PK (FK→stocks) | 종목코드 |
 | analysis | TEXT | 상세 분석 텍스트 |
 | advice | TEXT | 투자 조언 |
-| opinion | TEXT | 의견 (긍정적/중립적/부정적/추가매수/보유/매도) |
+| opinion | TEXT | 의견 (긍정적/중립적/부정적/추가매수/보유/관망/매도) |
 | toss_url | TEXT | 토스증권 링크 |
 | chart_path | TEXT | 차트 이미지 경로 |
 | created_at | DATETIME | 생성 시각 |
@@ -114,6 +116,17 @@
 | code | TEXT (FK→stocks) | 종목코드 |
 | added_at | DATETIME | 추가 시각 |
 - PK: (device_id, code)
+
+### investor_history (투자자 매매 히스토리)
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| code | TEXT | 종목코드 |
+| date | TEXT | 날짜 (YYYYMMDD) |
+| institution | INTEGER | 기관 순매수량 |
+| foreign_net | INTEGER | 외국인 순매수량 |
+| individual | INTEGER | 개인 순매수량 |
+- PK: (code, date), INDEX: (code, date)
+- 용도: 수급 스코어링에서 외국인/기관 연속 순매수 일수 계산
 
 ---
 
@@ -180,8 +193,8 @@
 - 응답: JSON 배열 `["날짜","시가","고가","저가","종가","거래량"]`
 
 ### 네이버 증권 웹 스크래핑
-- **메인 페이지** (`finance.naver.com/item/main.naver`): PER, PBR, ROE, 목표가, 업종
-- **투자자 동향** (`finance.naver.com/item/frgn.naver`): 기관/외국인/개인 매매수량
+- **메인 페이지** (`finance.naver.com/item/main.naver`): PER, PBR, ROE, EPS(전년/최신), 목표가, 업종
+- **투자자 동향** (`finance.naver.com/item/frgn.naver`): 기관/외국인/개인 매매수량 → investor_history 테이블에 저장
 - **뉴스** (`finance.naver.com/item/news_news.naver`): 최근 뉴스 10건
 - **재무제표** (highlight_D_Q 테이블): 분기별 매출액/영업이익/당기순이익
 - 인코딩: EUC-KR → responseType: 'arraybuffer' + TextDecoder('euc-kr')
@@ -195,47 +208,83 @@
 
 ## 분석 알고리즘
 
-### 보유 종목 의견 (Rules 4-8)
+### 보유 종목 의견 (5단계 우선순위)
 ```
-데이터 부족     → "보유" (Rule 4)
-가격 ≈ SMA5    → "추가매수" (Rules 5,6: 99~101% 범위)
-가격 > SMA5    → "보유" (Rule 8)
-가격 < SMA5    → "매도" (Rule 7)
-```
+1. 손절 체크 (최우선):
+   현재가 ≤ 평단가 × 0.93 (-7%)  → "매도" (손절)
 
-### 비보유 종목 의견 (Rules 9-12) - 5점 만점 스코어링
-```
-밸류에이션 (0-2점):
-  현재가 < 적정가 × 0.9  → 2점 (저평가)
-  현재가 < 적정가         → 1점
-  현재가 ≥ 적정가         → 0점
+2. 이중 이평선 이탈:
+   가격 < SMA5 AND 가격 < SMA20  → "매도" (강한 매도)
 
-기술지표 (0-2점):
-  summary.signal = "긍정적" → 2점
-  summary.signal = "주의"   → 0점
-  그 외                     → 1점
+3. 단기 이탈 + 중기 지지:
+   가격 < SMA5 AND 가격 ≥ SMA20  → "관망" (20일선 지지 확인 필요)
 
-추세 (0-1점):
-  가격 > SMA5 AND SMA5 > SMA20 → 1점
+4. 5일선 근접 지지:
+   가격 ≈ SMA5 (100~101% 범위)   → "추가매수"
 
-합산:
-  4점 이상 → "긍정적"
-  2점 이상 → "중립적"
-  2점 미만 → "부정적"
+5. 정배열 유지:
+   가격 > SMA5 AND SMA5 > SMA20  → "보유" (건강한 추세)
+   그 외 SMA5 위                   → "보유"
 ```
 
-### 기술지표 계산
+### 비보유 종목 의견 - 10점 만점 통합 스코어링
+```
+밸류에이션 (0~3점): calculateValuationScore()
+  PER 섹터 중앙값 비교 (0~1점):
+    PER < 섹터 중앙값 × 0.7 → 1.0 (확실한 저평가)
+    PER < 섹터 중앙값       → 0.5~1.0 (선형 보간)
+    PER ≥ 섹터 중앙값       → 0~0.5 (고평가 페널티)
+  PBR 섹터 중앙값 비교 (0~1점): PER과 동일 구조
+  PEG 비율 (0~1점):
+    PEG = PER / EPS성장률(%)
+    PEG < 0.5 → 1.0 / < 1.0 → 0.75 / < 1.5 → 0.5 / < 2.0 → 0.25
+    EPS 없으면 ROE 기반 폴백 (ROE>15 → 0.5, ROE>10 → 0.25)
+
+기술지표 (0~3점): calculateTechnicalScore()
+  RSI(14) 연속값 (가중치 30%): score = (70 - RSI) / 40, 클램프 [0,1]
+  MACD(12,26,9) 강도/방향 (가중치 25%):
+    히스토그램 양수 & 증가 → 1.0 / 양수 & 감소 → 0.6
+    히스토그램 음수 & 증가 → 0.4 / 음수 & 감소 → 0.0
+  볼린저밴드(20,2) (가중치 20%): score = (80 - %B) / 70, 클램프 [0,1]
+  거래량 (가중치 25%): 20일 평균 대비 비율 + 가격 방향 조합
+    상승 + 거래량 1.5배↑ → 1.0 / 상승 + 평균 이상 → 0.7
+    하락 + 거래량 1.5배↑ → 0.0 (패닉 매도)
+  가중합산 × 3 → 0~3점
+
+수급 (0~2점): calculateSupplyDemandScore()
+  외국인 연속 순매수 (0~1.2점, 가중치 높음):
+    5일+ → 1.2 / 3~4일 → 0.84 / 1~2일 → 0.36
+  기관 연속 순매수 (0~0.8점):
+    5일+ → 0.8 / 3~4일 → 0.56 / 1~2일 → 0.24
+  합산 (최대 2.0)
+
+추세 (0~2점): calculateTrendScore()
+  가격 > SMA5 > SMA20 (정배열) → 2.0
+  가격 > SMA5, 역배열           → 1.0
+  가격 > SMA20, SMA5 아래       → 0.5
+  양 이평선 아래                  → 0.0
+
+합산 (10점 만점):
+  7점 이상 → "긍정적"
+  4점 이상 → "중립적"
+  4점 미만 → "부정적"
+```
+
+### 기술지표 계산 (calculateIndicators)
 - **RSI(14)**: 14일 평균 상승폭 / (평균 상승폭 + 평균 하락폭) × 100
   - ≥70: 과매수, ≤30: 과매도
 - **MACD(12,26,9)**: EMA12 - EMA26, 시그널 = EMA9(MACD)
   - 히스토그램 > 0: 상승추세
 - **볼린저밴드(20,2)**: SMA20 ± 2σ, %B = (가격-하단) / (상단-하단)
 
-### 적정가 결정 우선순위
-1. 수동 설정된 fair_price (recommended_stocks 테이블)
-2. 애널리스트 목표가 (target_price, 네이버 스크래핑)
-3. ROE 기반 계산: `price × (1 + ROE/100)`
-4. 폴백: `price × 1.1`
+### EPS 데이터 수집
+- 네이버 증권 메인 페이지에서 `th_cop_anal17` 클래스로 EPS 추출
+- 3번째 `<td>` = 전년도 EPS, 4번째 `<td>` = 최신/추정 EPS
+- PEG 계산: `PER / ((epsCurrent - epsPrevious) / |epsPrevious| × 100)`
+
+### 투자자 데이터 영구 저장
+- 네이버 투자자 동향 스크래핑 시 `investor_history` 테이블에 UPSERT
+- 수급 스코어링 시 최근 20일 데이터를 DB에서 조회하여 연속 순매수 일수 계산
 
 ---
 

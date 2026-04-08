@@ -155,6 +155,18 @@ db.prepare(`
   )
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS investor_history (
+    code TEXT NOT NULL,
+    date TEXT NOT NULL,
+    institution INTEGER,
+    foreign_net INTEGER,
+    individual INTEGER,
+    PRIMARY KEY (code, date)
+  )
+`).run();
+db.prepare('CREATE INDEX IF NOT EXISTS idx_investor_history_code_date ON investor_history(code, date)').run();
+
 // Migration: add quantity to holding_stocks if missing
 try {
     const cols = db.prepare("PRAGMA table_info(holding_stocks)").all();
@@ -267,6 +279,19 @@ try {
     }
 } catch (e) {
     console.error('Migration error (recommended_stocks.created_at):', e.message);
+}
+
+// Migration: Add EPS columns to stocks for PEG calculation
+try {
+    const columns = db.prepare("PRAGMA table_info(stocks)").all();
+    if (!columns.some(col => col.name === 'eps_current')) {
+        db.prepare('ALTER TABLE stocks ADD COLUMN eps_current REAL').run();
+    }
+    if (!columns.some(col => col.name === 'eps_previous')) {
+        db.prepare('ALTER TABLE stocks ADD COLUMN eps_previous REAL').run();
+    }
+} catch (e) {
+    console.error('Migration error (stocks.eps):', e.message);
 }
 
 // Migration: Add chart_path to stock_analysis if missing
@@ -759,6 +784,24 @@ async function getStockData(code, fallbackName = null) {
                     });
                 }
                 investorData = matches.reverse();
+
+                // Persist investor data to investor_history
+                if (investorData.length > 0) {
+                    const insertInvestor = db.prepare(`
+                        INSERT INTO investor_history (code, date, institution, foreign_net, individual)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(code, date) DO UPDATE SET
+                            institution = excluded.institution,
+                            foreign_net = excluded.foreign_net,
+                            individual = excluded.individual
+                    `);
+                    const investorTx = db.transaction((rows) => {
+                        for (const r of rows) {
+                            insertInvestor.run(code, r.date, r.institution, r.foreign, r.individual);
+                        }
+                    });
+                    investorTx(investorData);
+                }
             } catch (investorError) {
                 console.error(`Investor Parse Error for ${code}:`, investorError.message);
             }
@@ -801,7 +844,15 @@ async function getStockData(code, fallbackName = null) {
                 const roeMatch = html.match(roeRegex);
                 roe = (roeMatch && roeMatch[1] !== '-') ? parseFloat(roeMatch[1]) : null;
 
-                console.log(`Scraped for ${code}: PER=${per}, PBR=${pbr}, ROE=${roe}, TP=${targetPrice}`);
+                // EPS extraction: 3rd td = previous year, 4th td = current/estimate year
+                const epsPrevRegex = /th_cop_anal17(?:[\s\S]*?<td.*?>){3}\s*([\d,.-]+)/;
+                const epsCurRegex = /th_cop_anal17(?:[\s\S]*?<td.*?>){4}\s*([\d,.-]+)/;
+                const epsPrevMatch = html.match(epsPrevRegex);
+                const epsCurMatch = html.match(epsCurRegex);
+                var epsPrevious = (epsPrevMatch && epsPrevMatch[1].trim() !== '-') ? parseFloat(epsPrevMatch[1].replace(/,/g, '')) : null;
+                var epsCurrent = (epsCurMatch && epsCurMatch[1].trim() !== '-') ? parseFloat(epsCurMatch[1].replace(/,/g, '')) : null;
+
+                console.log(`Scraped for ${code}: PER=${per}, PBR=${pbr}, ROE=${roe}, TP=${targetPrice}, EPS=${epsPrevious}→${epsCurrent}`);
             } catch (scrapingError) {
                 console.error(`Scraping Error for ${code}:`, scrapingError.message);
             }
@@ -844,8 +895,8 @@ async function getStockData(code, fallbackName = null) {
         }
 
         db.prepare(`
-            INSERT INTO stocks (code, name, price, change, change_rate, per, pbr, roe, target_price, category, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO stocks (code, name, price, change, change_rate, per, pbr, roe, target_price, category, eps_current, eps_previous, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(code) DO UPDATE SET
                 price = excluded.price,
                 name = excluded.name,
@@ -854,8 +905,10 @@ async function getStockData(code, fallbackName = null) {
                 roe = excluded.roe,
                 target_price = excluded.target_price,
                 category = excluded.category,
+                eps_current = excluded.eps_current,
+                eps_previous = excluded.eps_previous,
                 last_updated = CURRENT_TIMESTAMP
-        `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave);
+        `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave, epsCurrent || null, epsPrevious || null);
 
         // Advanced Analysis Generation Logic
         const historyRev = history.reverse();
@@ -870,75 +923,99 @@ async function getStockData(code, fallbackName = null) {
 
         const isHolding = db.prepare('SELECT 1 FROM holding_stocks WHERE code = ? LIMIT 1').get(code);
 
-        let analysis = `시장 전체 수급 흐름과 기술적 지표가 우호적인 환경을 조성하고 있습니다.`;
-        let advice = `현재 시장 환경을 고려할 때 분할 매수 관점에서 접근이 유효해 보입니다.`;
-        let opinion = `중립적`;
+        let analysis = '';
+        let advice = '';
+        let opinion = '중립적';
+        let scoringBreakdown = null;
 
         if (isHolding) {
-            // Rule 4, 5, 6, 7, 8: Holdings analysis based on 5-day MA
-            if (!sma5) {
+            // Holding stock: multi-condition logic (5MA + 20MA + stop-loss)
+            const holdingInfo = db.prepare(
+                'SELECT avg_price FROM holding_stocks WHERE code = ? LIMIT 1'
+            ).get(code);
+            const avgPrice = holdingInfo?.avg_price || latestPrice;
+            const lossRate = (latestPrice - avgPrice) / avgPrice;
+            const STOP_LOSS = -0.07;
+
+            if (lossRate <= STOP_LOSS) {
+                opinion = '매도';
+                analysis = `현재 주가(${latestPrice.toLocaleString()}원)가 평균 매입가(${avgPrice.toLocaleString()}원) 대비 ${(lossRate * 100).toFixed(1)}% 하락하여 손절 기준(-7%)을 초과했습니다.`;
+                advice = '손실 확대를 방지하기 위해 비중 축소 또는 매도를 권장합니다.';
+            } else if (sma5 && sma20 && latestPrice < sma5 && latestPrice < sma20) {
+                opinion = '매도';
+                analysis = `주가가 5일선(${sma5.toLocaleString()}원)과 20일선(${sma20.toLocaleString()}원)을 모두 하향 이탈하여 추세가 크게 약화되었습니다.`;
+                advice = '이중 이평선 이탈은 강한 매도 신호입니다. 비중 축소를 권장합니다.';
+            } else if (sma5 && sma20 && latestPrice < sma5 && latestPrice >= sma20) {
+                opinion = '관망';
+                analysis = `주가가 5일선(${sma5.toLocaleString()}원)을 이탈했으나 20일선(${sma20.toLocaleString()}원) 위에서 지지 중입니다.`;
+                advice = '20일선 지지 여부를 확인 후 대응하세요. 이탈 시 매도, 반등 시 보유가 적절합니다.';
+            } else if (sma5 && latestPrice >= sma5 && latestPrice <= sma5 * 1.01) {
+                opinion = '추가매수';
+                analysis = `현재 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있는 안전한 타점입니다.`;
+                advice = '5일선 터치 및 지지 시점이므로 비중 확대를 고려할 수 있습니다.';
+            } else if (sma5 && sma20 && latestPrice > sma5 && sma5 > sma20) {
+                opinion = '보유';
+                analysis = `주가가 5일선과 20일선 위에서 정배열 추세를 유지하고 있습니다. 매우 건강한 차트 구조입니다.`;
+                advice = '추세가 강하게 유지되고 있으므로 기존 물량을 보유하며 수익을 극대화하세요.';
+            } else if (!sma5) {
                 opinion = '보유';
                 analysis = '데이터가 충분하지 않으나 현재 추세를 유지하고 있습니다.';
                 advice = '추세 유지 시 보유 전략을 권장합니다.';
-            } else if (latestPrice >= sma5) {
-                if (latestPrice <= sma5 * 1.01) { // Rules 5 & 6
-                    opinion = '추가매수';
-                    analysis = `현재 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있는 안전한 타점입니다.`;
-                    advice = '5일선 터치 및 지지 시점이므로 비중 확대를 고려할 수 있습니다.';
-                } else { // Rule 8
-                    opinion = '보유';
-                    analysis = `주가가 5일선 위에서 안정적으로 유지되며 정배열 추세를 지속하고 있습니다.`;
-                    advice = '추세가 유지되고 있으므로 기존 물량을 보유하며 수익을 극대화하는 전략이 필요합니다.';
-                }
-            } else { // Rule 7
-                opinion = '매도';
-                analysis = `주가가 5일선(${sma5.toLocaleString()}원)을 하향 돌파하며 단기 추세가 약화되었습니다.`;
-                advice = '5일선 이탈 시 리스크 관리를 위해 비중 축소 또는 매도 대응을 권장합니다.';
+            } else {
+                opinion = '보유';
+                analysis = `주가가 5일선(${sma5.toLocaleString()}원) 위에서 유지되고 있습니다.`;
+                advice = '추세 유지 시 보유 전략을 권장합니다.';
             }
         } else {
-            // Rules 9, 10, 11, 12: Recommendations analysis (integrated with technical indicators)
+            // Non-holding: 10-point integrated scoring system
+            const valuation = calculateValuationScore(code, per, pbr, roe, latestPrice, targetPrice, epsCurrent, epsPrevious);
+            const technical = calculateTechnicalScore(code);
+            const supplyDemand = calculateSupplyDemandScore(code);
+            const trend = calculateTrendScore(latestPrice, sma5, sma20);
+
+            const totalScore = parseFloat((valuation.total + technical.total + supplyDemand.total + trend.total).toFixed(2));
+            scoringBreakdown = {
+                valuation: valuation.total,
+                technical: technical.total,
+                supplyDemand: supplyDemand.total,
+                trend: trend.total,
+                total: totalScore,
+                detail: {
+                    valuation: valuation.detail,
+                    technical: technical.detail,
+                    supplyDemand: supplyDemand.detail,
+                    trend: trend.detail
+                }
+            };
+
             const isBullish = sma5 && sma20 && sma5 > sma20;
             const alignment = isBullish ? '정배열' : '역배열/혼조';
             const distance = sma5 ? Math.abs((latestPrice - sma5) / sma5 * 100).toFixed(1) : 0;
-            const trend = latestPrice > sma5 ? '위' : '아래';
+            const trendDir = latestPrice > sma5 ? '위' : '아래';
 
-            // Get technical indicator summary for this stock
-            const techIndicators = calculateIndicators(code);
-            const techSignal = techIndicators.summary?.signal || '중립'; // '긍정적', '중립', '주의'
+            analysis = `현재 주가는 5일선(${sma5?.toLocaleString() || '-'}원) ${trendDir}에 위치하고 있으며, 이평선은 ${alignment} 상태입니다. `;
+            analysis += `이격도 ${distance}%(${parseFloat(distance) > 5 ? '과열' : '안정'}). `;
+            analysis += `PER ${per || '-'}, PBR ${pbr || '-'}, ROE ${roe || '-'}%. `;
+            analysis += `[종합점수 ${totalScore}/10] 밸류에이션 ${valuation.total}/3, 기술지표 ${technical.total}/3, 수급 ${supplyDemand.total}/2, 추세 ${trend.total}/2.`;
 
-            analysis = `현재 주가는 5일선(${sma5?.toLocaleString() || '-'}원) ${trend}에 위치하고 있으며, 이평선은 ${alignment} 상태입니다. `;
-            analysis += `주가와 5일선의 이격도는 ${distance}%로 ${parseFloat(distance) > 5 ? '단기 과열' : '안정적'} 수준입니다. `;
-            analysis += `지표상 PER ${per || '-'}, PBR ${pbr || '-'}, ROE ${roe || '-'}%를 기록 중입니다. `;
-            analysis += `기술적 지표(RSI/MACD/볼린저) 종합 신호는 "${techSignal}"입니다.`;
-
-            // Scoring system: valuation (0~2) + technical (0~2) + trend (0~1)
-            let score = 0;
-            const calculatedFairPrice = targetPrice || (roe ? Math.round(latestPrice * (1 + (roe / 100))) : Math.round(latestPrice * 1.1));
-
-            // Valuation score
-            if (latestPrice < calculatedFairPrice * 0.9) score += 2;       // clearly undervalued
-            else if (latestPrice < calculatedFairPrice) score += 1;         // slightly undervalued
-
-            // Technical indicator score
-            if (techSignal === '긍정적') score += 2;
-            else if (techSignal === '중립') score += 1;
-            // '주의' adds 0
-
-            // Trend score
-            if (latestPrice > sma5 && isBullish) score += 1;
-
-            // Map score to opinion
-            if (score >= 4) {
+            if (totalScore >= 7.0) {
                 opinion = '긍정적';
-                advice = targetPrice
-                    ? `증권사 목표주가(${targetPrice.toLocaleString()}원) 대비 상승 여력이 있고, 기술적 지표도 우호적입니다.`
-                    : `적정가 대비 저평가 상태이며 기술적 지표가 매수를 지지하고 있습니다.`;
-            } else if (score >= 2) {
+                advice = `종합점수 ${totalScore}점으로 매수에 유리한 조건입니다. `;
+                advice += valuation.total >= 2 ? '밸류에이션이 섹터 대비 저평가 상태이며, ' : '';
+                advice += technical.total >= 2 ? '기술적 지표도 매수를 지지합니다. ' : '';
+                advice += supplyDemand.total >= 1.5 ? '외국인/기관의 연속 순매수도 긍정적입니다.' : '';
+            } else if (totalScore >= 4.0) {
                 opinion = '중립적';
-                advice = '밸류에이션과 기술적 지표를 종합하면 적극적 매수보다는 관망이 적절합니다.';
+                advice = `종합점수 ${totalScore}점으로 적극적 매수보다는 관망이 적절합니다. `;
+                if (valuation.total < 1) advice += '밸류에이션 매력이 부족하거나 ';
+                if (technical.total < 1) advice += '기술적 지표가 약세를 보이고 있어 ';
+                advice += '분할매수 관점에서 접근을 권장합니다.';
             } else {
                 opinion = '부정적';
-                advice = '밸류에이션 부담이 있거나 기술적 지표가 주의 신호를 보내고 있어 보수적 접근이 필요합니다.';
+                advice = `종합점수 ${totalScore}점으로 보수적 접근이 필요합니다. `;
+                if (valuation.total < 1) advice += '밸류에이션 부담이 크고, ';
+                if (technical.total < 1) advice += '기술적 지표가 주의 신호를 보내고 있으며, ';
+                if (supplyDemand.total < 0.5) advice += '수급도 비우호적입니다.';
             }
         }
 
@@ -978,7 +1055,8 @@ async function getStockData(code, fallbackName = null) {
             advice,
             opinion,
             tossUrl,
-            chartPath
+            chartPath,
+            scoringBreakdown
         };
         setCache(code, result);
         return result;
@@ -1491,6 +1569,225 @@ app.delete('/api/watchlist/:code', (req, res) => {
         res.status(500).json({ error: 'Failed to remove from watchlist' });
     }
 });
+
+// ========== Advanced Scoring Functions ==========
+
+function median(arr) {
+    if (!arr.length) return null;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Valuation Score: 0.0 ~ 3.0 (PER sector comparison + PBR sector comparison + PEG)
+function calculateValuationScore(code, per, pbr, roe, price, targetPrice, epsCurrent, epsPrevious) {
+    const stock = db.prepare('SELECT category FROM stocks WHERE code = ?').get(code);
+    const category = stock?.category;
+
+    // Sub-A: PER vs Sector Median (0~1.0)
+    let perScore = 0;
+    if (per && per > 0 && category) {
+        const peers = db.prepare(
+            'SELECT per FROM stocks WHERE category = ? AND per > 0 AND per < 200 AND code != ?'
+        ).all(category, code).map(r => r.per);
+        if (peers.length >= 3) {
+            const sectorPer = median(peers);
+            if (per < sectorPer * 0.7) perScore = 1.0;
+            else if (per < sectorPer) perScore = 0.5 + 0.5 * (1 - per / sectorPer);
+            else perScore = Math.max(0, 0.5 - 0.5 * (per / sectorPer - 1));
+        } else if (targetPrice && price < targetPrice) {
+            perScore = Math.min(0.5, (targetPrice - price) / targetPrice);
+        }
+    } else if (targetPrice && price < targetPrice) {
+        perScore = Math.min(0.5, (targetPrice - price) / targetPrice);
+    }
+
+    // Sub-B: PBR vs Sector Median (0~1.0)
+    let pbrScore = 0;
+    if (pbr && pbr > 0 && category) {
+        const peers = db.prepare(
+            'SELECT pbr FROM stocks WHERE category = ? AND pbr > 0 AND pbr < 20 AND code != ?'
+        ).all(category, code).map(r => r.pbr);
+        if (peers.length >= 3) {
+            const sectorPbr = median(peers);
+            if (pbr < sectorPbr * 0.7) pbrScore = 1.0;
+            else if (pbr < sectorPbr) pbrScore = 0.5 + 0.5 * (1 - pbr / sectorPbr);
+            else pbrScore = Math.max(0, 0.5 - 0.5 * (pbr / sectorPbr - 1));
+        }
+    }
+
+    // Sub-C: PEG Ratio (0~1.0)
+    let pegScore = 0;
+    if (epsCurrent && epsPrevious && Math.abs(epsPrevious) > 0 && per && per > 0) {
+        const epsGrowth = (epsCurrent - epsPrevious) / Math.abs(epsPrevious) * 100;
+        if (epsGrowth > 0) {
+            const peg = per / epsGrowth;
+            if (peg < 0.5) pegScore = 1.0;
+            else if (peg < 1.0) pegScore = 0.75;
+            else if (peg < 1.5) pegScore = 0.5;
+            else if (peg < 2.0) pegScore = 0.25;
+        }
+    } else if (roe && roe > 15) {
+        pegScore = 0.5;
+    } else if (roe && roe > 10) {
+        pegScore = 0.25;
+    }
+
+    return {
+        total: parseFloat((perScore + pbrScore + pegScore).toFixed(2)),
+        detail: { perScore: parseFloat(perScore.toFixed(2)), pbrScore: parseFloat(pbrScore.toFixed(2)), pegScore: parseFloat(pegScore.toFixed(2)) }
+    };
+}
+
+// Technical Score: 0.0 ~ 3.0 (RSI + MACD + Bollinger + Volume)
+function calculateTechnicalScore(code) {
+    const history = db.prepare(
+        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date ASC'
+    ).all(code);
+    if (history.length < 15) return { total: 1.5, detail: {} }; // insufficient data → neutral
+
+    const prices = history.map(h => h.price);
+    const volumes = history.map(h => h.volume);
+    const latestPrice = prices[prices.length - 1];
+    const prevPrice = prices[prices.length - 2];
+
+    // RSI Score (0~1.0): oversold = high score
+    let rsiScore = 0.5;
+    if (prices.length >= 15) {
+        let gains = 0, losses = 0;
+        for (let i = prices.length - 14; i < prices.length; i++) {
+            const diff = prices[i] - prices[i - 1];
+            if (diff > 0) gains += diff; else losses -= diff;
+        }
+        const avgGain = gains / 14, avgLoss = losses / 14;
+        const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        rsiScore = Math.max(0, Math.min(1, (70 - rsi) / 40));
+    }
+
+    // MACD Score (0~1.0): positive & increasing histogram = high score
+    let macdScore = 0.5;
+    if (prices.length >= 26) {
+        const ema = (data, period) => {
+            const k = 2 / (period + 1);
+            let v = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+            for (let i = period; i < data.length; i++) v = data[i] * k + v * (1 - k);
+            return v;
+        };
+        const recentMacds = [];
+        for (let i = Math.max(26, prices.length - 20); i <= prices.length; i++) {
+            const slice = prices.slice(0, i);
+            if (slice.length >= 26) recentMacds.push(ema(slice, 12) - ema(slice, 26));
+        }
+        if (recentMacds.length >= 9) {
+            const signal = recentMacds.slice(-9).reduce((a, b) => a + b, 0) / 9;
+            const histCurrent = recentMacds[recentMacds.length - 1] - signal;
+            const histPrev = recentMacds.length >= 10
+                ? recentMacds[recentMacds.length - 2] - (recentMacds.slice(-10, -1).slice(-9).reduce((a, b) => a + b, 0) / 9)
+                : histCurrent;
+            const increasing = histCurrent > histPrev;
+            if (histCurrent > 0 && increasing) macdScore = 1.0;
+            else if (histCurrent > 0) macdScore = 0.6;
+            else if (histCurrent < 0 && increasing) macdScore = 0.4;
+            else macdScore = 0.0;
+        }
+    }
+
+    // Bollinger Score (0~1.0): near lower band = high score
+    let bollingerScore = 0.5;
+    if (prices.length >= 20) {
+        const recent20 = prices.slice(-20);
+        const sma20 = recent20.reduce((a, b) => a + b, 0) / 20;
+        const stdDev = Math.sqrt(recent20.reduce((a, p) => a + Math.pow(p - sma20, 2), 0) / 20);
+        if (stdDev > 0) {
+            const upper = sma20 + 2 * stdDev;
+            const lower = sma20 - 2 * stdDev;
+            const percentB = (latestPrice - lower) / (upper - lower) * 100;
+            bollingerScore = Math.max(0, Math.min(1, (80 - percentB) / 70));
+        }
+    }
+
+    // Volume Score (0~1.0): price up on high volume = high score
+    let volumeScore = 0.5;
+    if (volumes.length >= 20) {
+        const volMA20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+        if (volMA20 > 0) {
+            const volumeRatio = volumes[volumes.length - 1] / volMA20;
+            const priceUp = latestPrice > prevPrice;
+            if (priceUp && volumeRatio > 1.5) volumeScore = 1.0;
+            else if (priceUp && volumeRatio > 1.0) volumeScore = 0.7;
+            else if (priceUp) volumeScore = 0.4;
+            else if (!priceUp && volumeRatio > 1.5) volumeScore = 0.0;
+            else if (!priceUp) volumeScore = 0.3;
+        }
+    }
+
+    // Weighted sum → scale to 0~3
+    const weighted = 0.3 * rsiScore + 0.25 * macdScore + 0.2 * bollingerScore + 0.25 * volumeScore;
+    return {
+        total: parseFloat((weighted * 3).toFixed(2)),
+        detail: {
+            rsiScore: parseFloat(rsiScore.toFixed(2)),
+            macdScore: parseFloat(macdScore.toFixed(2)),
+            bollingerScore: parseFloat(bollingerScore.toFixed(2)),
+            volumeScore: parseFloat(volumeScore.toFixed(2))
+        }
+    };
+}
+
+// Supply/Demand Score: 0.0 ~ 2.0 (foreign + institutional consecutive buying)
+function calculateSupplyDemandScore(code) {
+    // Use persisted investor_history for reliable consecutive counting
+    const rows = db.prepare(
+        'SELECT date, institution, foreign_net FROM investor_history WHERE code = ? ORDER BY date DESC LIMIT 20'
+    ).all(code);
+    if (rows.length < 3) return { total: 0, detail: {} };
+
+    let consecutiveForeignBuy = 0;
+    for (const r of rows) {
+        if (r.foreign_net > 0) consecutiveForeignBuy++;
+        else break;
+    }
+
+    let consecutiveInstBuy = 0;
+    for (const r of rows) {
+        if (r.institution > 0) consecutiveInstBuy++;
+        else break;
+    }
+
+    // Foreign score (0~1.2): weighted higher as KOSPI foreign investors tend to be more informed
+    const foreignScore = consecutiveForeignBuy >= 5 ? 1.2
+        : consecutiveForeignBuy >= 3 ? 0.84
+        : consecutiveForeignBuy >= 1 ? 0.36 : 0;
+
+    // Institutional score (0~0.8)
+    const instScore = consecutiveInstBuy >= 5 ? 0.8
+        : consecutiveInstBuy >= 3 ? 0.56
+        : consecutiveInstBuy >= 1 ? 0.24 : 0;
+
+    return {
+        total: parseFloat(Math.min(2.0, foreignScore + instScore).toFixed(2)),
+        detail: {
+            foreignConsecutive: consecutiveForeignBuy,
+            instConsecutive: consecutiveInstBuy,
+            foreignScore: parseFloat(foreignScore.toFixed(2)),
+            instScore: parseFloat(instScore.toFixed(2))
+        }
+    };
+}
+
+// Trend Score: 0.0 ~ 2.0 (MA alignment)
+function calculateTrendScore(latestPrice, sma5, sma20) {
+    if (!sma5 || !sma20) return { total: 1.0, detail: { reason: '이평선 데이터 부족' } };
+    if (latestPrice > sma5 && sma5 > sma20) {
+        return { total: 2.0, detail: { reason: '정배열: 주가 > 5일선 > 20일선' } };
+    } else if (latestPrice > sma5 && sma5 <= sma20) {
+        return { total: 1.0, detail: { reason: '5일선 위이나 역배열 상태' } };
+    } else if (latestPrice > sma20 && latestPrice <= sma5) {
+        return { total: 0.5, detail: { reason: '20일선 위이나 5일선 아래' } };
+    } else {
+        return { total: 0.0, detail: { reason: '주가가 양 이평선 아래' } };
+    }
+}
 
 // --- Technical Indicators Calculation (shared function) ---
 function calculateIndicators(code) {

@@ -42,6 +42,20 @@ export interface Recommendation {
   chartPath?: string;
 }
 
+export interface ScoringBreakdown {
+  valuation: number;
+  technical: number;
+  supplyDemand: number;
+  trend: number;
+  total: number;
+  detail?: {
+    valuation: { perScore: number; pbrScore: number; pegScore: number };
+    technical: { rsiScore: number; macdScore: number; bollingerScore: number; volumeScore: number };
+    supplyDemand: { foreignConsecutive: number; instConsecutive: number; foreignScore: number; instScore: number };
+    trend: { reason: string };
+  };
+}
+
 export interface StockDetail {
   code: string;
   name: string;
@@ -57,6 +71,7 @@ export interface StockDetail {
   opinion?: string;
   tossUrl?: string;
   chartPath?: string;
+  scoringBreakdown?: ScoringBreakdown;
 }
 
 export interface HistoryEntry {
