@@ -115,26 +115,40 @@
 - 프론트엔드: Axios 인터셉터로 X-Device-Id 헤더 자동 첨부
 - 프론트엔드: `DeviceIdStorage` 인터페이스 추상화 (Web 구현체 기본, Capacitor 교체 가능)
 
-### 구조 개선 및 보완 (리팩토링)
+### 구조 개선 및 보완 (구현 완료)
 - **Opinion 분리**: `MarketOpinion` (비보유, 공용, DB 저장) / `HoldingOpinion` (보유, 개인화, 런타임 계산) 명확히 분리
-  - `stock_analysis.opinion` = `MarketOpinion` 전용
-  - `GET /api/holdings` 응답에 `holding_opinion` 필드 추가 (런타임 계산)
-  - TypeScript 타입 레벨 강제
-- **백엔드 도메인 분리**: `server/server.js` 단일 파일 → `domains/` 구조로 리팩토링
-- **Zustand 스토어 분리**: `useStockStore` → `useNavigationStore` + `usePortfolioStore` + `useAlertStore`
-- **알림 쿨다운 개선**: 단순 24h 중복 방지 → type별 차별화 (매도 48h / 추가매수 24h / 목표가 12h)
+  - `stock_analysis.opinion` = `MarketOpinion` 전용 (API 응답 시 `market_opinion` alias)
+  - `GET/POST /api/holdings` 응답에 `holding_opinion` 필드 추가 (`calculateHoldingOpinion()` 런타임 계산)
+  - TypeScript 타입 레벨 강제 (`MarketOpinion`, `HoldingOpinion` 별도 타입)
+  - 모든 프론트엔드 뷰에서 `.opinion` → `.market_opinion` 전환 완료
+- **Zustand 스토어 분리**: `useStockStore` → `useNavigationStore` + `usePortfolioStore` + `useAlertStore` (구현 완료)
+  - `useStockStore.ts`는 하위 호환 re-export 파일로 유지
+  - `usePortfolioStore`: `error` 상태 + 한국어 에러 메시지 + throw 패턴
+- **DeviceIdStorage 인터페이스**: `src/storage/deviceId.ts`에 인터페이스 + `WebDeviceIdStorage` 구현체 (구현 완료)
+- **알림 쿨다운 개선**: 단순 24h 중복 방지 → type별 차별화 (`sell_signal` 48h / `sma5_*` 24h / `target_near` 12h)
+  - `sell_signal` 조건: 5일선+20일선 이중 이탈로 변경 (기존 `opinion === '매도'`에서 분리)
 - **스코어링 엣지케이스 처리**:
   - PER 음수(적자 기업): 0점 고정 + `per_negative` 플래그
-  - PEG 성장률 ≤ 0: 무효 처리 + 밸류에이션 2점 만점 재정규화
-  - 볼린저밴드 %B 정규화 기준 수정
-  - RSI 30~50 구간 보정 추가
-- **추천 source 구분**: `recommended_stocks.source` 컬럼 추가 ('manual' / 'algorithm')
+  - PEG 성장률 ≤ 0: 무효 처리 + `(perScore+pbrScore)/2.0*3.0` 재정규화
+  - 볼린저밴드 %B 정규화: `(80 - percentB) / 80` (기존 `/70` → `/80`)
+  - RSI 30~50 구간: `(50-rsi)/20 * 0.3` 과매도 회복 보정 추가
+  - 거래량 하락+기타: 0.3 → 0.2 수정
+  - 섹터 내 종목 수 < 5: `low_confidence` 플래그 추가
+- **추천 source 구분**: `recommended_stocks.source` 컬럼 추가 (`'manual'` / `'algorithm'`)
+  - `initialRecommendations` INSERT에 `source: 'manual'` 명시
+- **보안 강화**:
+  - CORS 화이트리스트: `localhost:5173/4173/3000` + Capacitor origins만 허용
+  - `express-rate-limit`: device_id 기준 120req/min
+- **스크리너 PER 필터**: `perMin`/`perMax` 지정 시 `per > 0` 자동 추가 (적자 기업 제외)
+- **topStocks 중복 제거**: 하이브(352820) 중복 엔트리 삭제 (99 → 98개, dedup 후 97개)
+- **syncAllStocks() 지연**: 서버 시작 5초 후 실행 (startup 블로킹 방지)
+- **POST /api/holdings 응답**: `holding_opinion` + `market_opinion` 포함 반환
 
 ---
 
 ## 사용된 AI 도구
-- **Claude Code** (Anthropic Claude Opus 4)
-- CLI 환경에서 직접 코드 작성, 파일 편집, 빌드 검증 수행
+- **Claude Code** (Anthropic Claude Opus 4.6)
+- CLI 및 VSCode 확장 환경에서 직접 코드 작성, 파일 편집, 빌드 검증 수행
 - 코드 작성 → TypeScript 타입 체크 → Vite 빌드 검증 사이클
 - **Claude (claude.ai)**: 아키텍처 리뷰, 설계 문제점 파악 및 보완 계획 수립
 
@@ -153,10 +167,10 @@
 
 | 항목 | 현황 | 계획 |
 |------|------|------|
-| 백엔드 단일 파일 | `server/server.js` 1개 파일 | `domains/` 구조 리팩토링 (Phase 1) |
-| SQLite 동기 블로킹 | syncAllStocks 중 요청 지연 | PostgreSQL + 비동기 전환 (Phase 2) |
+| 백엔드 단일 파일 | `server/server.js` ~2,200줄 | `domains/` 구조 리팩토링 (Phase 2) |
+| SQLite 동기 블로킹 | syncAllStocks 중 요청 지연 (5초 지연 실행으로 완화) | PostgreSQL + 비동기 전환 (Phase 2) |
 | 스크래핑 의존성 | 핵심 가격 데이터 스크래핑 | KIS Open API 이관 (Phase 2) |
-| device_id 보안 | 탈취 시 타인 데이터 접근 가능 | HMAC 서명 추가 (Phase 2) |
+| device_id 보안 | CORS + Rate limit 적용됨. HMAC 미적용 | HMAC 서명 추가 (Phase 2) |
 | Puppeteer 클라우드 | Chromium 서버 설치 필요 | 자체 캔들차트 대체 또는 CDN (Phase 3) |
 | 스코어 백테스팅 | 가중치 근거 없음 | 과거 데이터 기반 검증 (Phase 4) |
 | 수급 금액 미반영 | 일수만 카운트 | 순매수 금액 가중치 추가 (Phase 4) |

@@ -42,6 +42,7 @@ export const usePortfolioStore = create<PortfolioState & PortfolioActions>((set,
   },
 
   addHolding: async (stock) => {
+    set({ error: null });
     try {
       await stockApi.addHolding({
         code: stock.code,
@@ -53,10 +54,13 @@ export const usePortfolioStore = create<PortfolioState & PortfolioActions>((set,
       await get().fetchHoldings();
     } catch (error) {
       console.error('Failed to add holding:', error);
+      set({ error: '종목 추가에 실패했습니다.' });
+      throw error;
     }
   },
 
   updateHolding: async (stock) => {
+    set({ error: null });
     try {
       await stockApi.addHolding({
         code: stock.code,
@@ -68,15 +72,20 @@ export const usePortfolioStore = create<PortfolioState & PortfolioActions>((set,
       await get().fetchHoldings();
     } catch (error) {
       console.error('Failed to update holding:', error);
+      set({ error: '종목 수정에 실패했습니다.' });
+      throw error;
     }
   },
 
   deleteHolding: async (code) => {
+    set({ error: null });
     try {
       await stockApi.deleteHolding(code);
       await get().fetchHoldings();
     } catch (error) {
       console.error('Failed to delete holding:', error);
+      set({ error: '종목 삭제에 실패했습니다.' });
+      throw error;
     }
   },
 }));

@@ -57,10 +57,10 @@ axios.interceptors.request.use((config) => {
 
 ---
 
-## 상태관리 (Zustand — 도메인별 3개 스토어)
+## 상태관리 (Zustand — 도메인별 3개 스토어 + Toast)
 
-> **현재 상태**: `useStockStore` 단일 스토어로 구현되어 있음.
-> 아래 구조가 목표이며, 리팩토링을 통해 단계적으로 전환한다.
+> 기존 `useStockStore` 단일 스토어에서 도메인별 3개 스토어로 분리 완료.
+> `useStockStore.ts`는 하위 호환을 위한 re-export 파일로만 존재한다.
 
 ### useNavigationStore (`src/stores/useNavigationStore.ts`)
 **관심사**: UI 탐색 상태 (도메인 데이터 없음)

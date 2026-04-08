@@ -1,73 +1,29 @@
-# React + TypeScript + Vite
+# Stock Analyzer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+한국 주식 분석 및 포트폴리오 관리 애플리케이션.
 
-Currently, two official plugins are available:
+10점 만점 통합 스코어링(밸류에이션·기술지표·수급·추세)을 기반으로 종목 추천, 보유종목 의견(매도/관망/추가매수/보유), 알림을 제공한다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 기술 스택
 
-## React Compiler
+| 영역 | 스택 |
+|------|------|
+| 프론트엔드 | React 19, TypeScript, Vite 7, Tailwind CSS v4, Recharts, Zustand |
+| 백엔드 | Node.js, Express, SQLite3 (better-sqlite3), express-rate-limit |
+| 데이터 | 네이버 증권 스크래핑 + 토스증권 차트 캡처 (Puppeteer) |
+| 배포 예정 | Capacitor (iOS/Android) |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 실행
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev              # 프론트엔드 (localhost:5173)
+node server/server.js    # 백엔드 (localhost:3001)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 문서
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- [CLAUDE.md](CLAUDE.md) — 개발 가이드 (핵심 규칙, 알고리즘, DB, API)
+- [docs/BACKEND.md](docs/BACKEND.md) — 백엔드 상세
+- [docs/FRONTEND.md](docs/FRONTEND.md) — 프론트엔드 상세
+- [docs/AI.md](docs/AI.md) — AI 활용 내역

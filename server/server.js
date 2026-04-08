@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import Database from 'better-sqlite3';
@@ -16,8 +17,36 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// CORS whitelist (dev + production origins)
+const ALLOWED_ORIGINS = [
+    'http://localhost:5173',  // Vite dev server
+    'http://localhost:4173',  // Vite preview
+    'http://localhost:3000',  // alternative dev
+    'capacitor://localhost',  // Capacitor iOS
+    'http://localhost',       // Capacitor Android
+];
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+}));
 app.use(express.json());
+
+// Rate limiting per device_id (or IP fallback)
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 120, // 120 requests per minute per key
+    keyGenerator: (req) => req.headers['x-device-id'] || req.ip,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' },
+});
+app.use('/api/', apiLimiter);
 app.use('/charts', express.static(path.join(__dirname, '..', 'public', 'charts')));
 
 // Device ID helper: extract from X-Device-Id header
@@ -429,7 +458,6 @@ const topStocks = [
     { code: '293490', name: '카카오게임즈' },
     { code: '112040', name: '위메이드' },
     { code: '078340', name: '컴투스' },
-    { code: '352820', name: '하이브' },
     { code: '214320', name: '이노션' },
     { code: '030520', name: '한글과컴퓨터' },
     // 조선/기계/방산 (13종)
@@ -492,12 +520,13 @@ const initialRecommendations = [
 ];
 
 const insertRec = db.prepare(`
-    INSERT INTO recommended_stocks (code, reason, fair_price, score)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO recommended_stocks (code, reason, fair_price, score, source)
+    VALUES (?, ?, ?, ?, 'manual')
     ON CONFLICT(code) DO UPDATE SET
         reason = excluded.reason,
         fair_price = excluded.fair_price,
-        score = excluded.score
+        score = excluded.score,
+        source = excluded.source
 `);
 const populateRecs = db.transaction((recs) => {
     for (const r of recs) {
@@ -635,8 +664,8 @@ async function captureChart(code) {
     }
 }
 
-// Run sync on start + schedule daily 8AM
-syncAllStocks();
+// Run sync on start (delayed to avoid blocking startup) + schedule daily 8AM
+setTimeout(() => syncAllStocks(), 5000);
 scheduleDaily8AM();
 
 // Alert cooldown per type (in milliseconds)
@@ -1192,11 +1221,24 @@ app.post('/api/holdings', async (req, res) => {
         recalcWeights(deviceId);
 
         const updated = db.prepare(`
-            SELECT s.*, h.avg_price, h.weight, h.quantity
+            SELECT s.*, h.avg_price, h.weight, h.quantity, a.opinion AS market_opinion
             FROM stocks s
             JOIN holding_stocks h ON s.code = h.code
+            LEFT JOIN stock_analysis a ON s.code = a.code
             WHERE h.device_id = ? AND s.code = ?
         `).get(deviceId, code);
+
+        // Calculate holding_opinion at runtime
+        if (updated) {
+            const history = db.prepare(
+                'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20'
+            ).all(code);
+            let sma5 = null, sma20 = null;
+            if (history.length >= 5) sma5 = Math.round(history.slice(0, 5).reduce((s, r) => s + r.price, 0) / 5);
+            if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
+            updated.holding_opinion = calculateHoldingOpinion(updated.avg_price, updated.price, sma5, sma20);
+            updated.market_opinion = updated.market_opinion || '중립적';
+        }
         res.json(updated);
     } catch (error) {
         console.error('Holdings POST Error:', error.message);
@@ -1959,6 +2001,7 @@ app.get('/api/screener', (req, res) => {
         `;
         const params = [];
 
+        if (perMin || perMax) { sql += ' AND s.per > 0'; } // PER 음수(적자 기업) 제외
         if (perMin) { sql += ' AND s.per >= ?'; params.push(Number(perMin)); }
         if (perMax) { sql += ' AND s.per <= ?'; params.push(Number(perMax)); }
         if (pbrMin) { sql += ' AND s.pbr >= ?'; params.push(Number(pbrMin)); }
