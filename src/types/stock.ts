@@ -78,6 +78,7 @@ export interface StockDetail {
   code: string;
   name: string;
   price: number;
+  category?: string;
   per?: number;
   pbr?: number;
   roe?: number;
@@ -177,6 +178,11 @@ export interface TechnicalIndicators {
     description: string;
     details: IndicatorDetail[];
   } | null;
+  // 각 지표의 계산 가능 여부 (sma_available과 동일 패턴)
+  rsi_available?: boolean;       // 히스토리 ≥15일
+  macd_available?: boolean;      // 히스토리 ≥26일
+  bollinger_available?: boolean; // 히스토리 ≥20일
+  history_days?: number;
 }
 
 export interface NewsItem {

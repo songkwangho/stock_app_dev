@@ -17,21 +17,22 @@ server/
 │   └── migrate.js        # runMigrations() — 11개 마이그레이션
 ├── helpers/
 │   ├── cache.js          # getCached/setCache/invalidateCache (10분 TTL)
-│   └── deviceId.js       # getDeviceId/requireDeviceId
+│   ├── deviceId.js       # getDeviceId/requireDeviceId
+│   └── sma.js            # computeSMA(db, code) — 도메인 간 의존성 회피용 공유 유틸
 ├── scrapers/
 │   ├── naver.js          # mapToCategory, scrapeMainPage, scrapeInvestorData 등
 │   └── toss.js           # captureChart (Puppeteer)
 ├── domains/
 │   ├── analysis/
-│   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median + computeSMA(db, code)
-│   │   ├── indicators.js # calculateIndicators (RSI/MACD/볼린저)
+│   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median
+│   │   ├── indicators.js # calculateIndicators (RSI/MACD/볼린저 + *_available 플래그)
 │   │   └── router.js     # 분석 라우터 (indicators/volatility/financials/news/chart/screener/sector — 7 endpoints)
 │   ├── alert/
 │   │   ├── service.js    # generateAlerts + ALERT_COOLDOWNS — 알림 메시지는 모두 중립적 표현
 │   │   └── router.js     # 알림 라우터 (4 endpoints)
 │   ├── portfolio/
 │   │   ├── service.js    # recalcWeights
-│   │   └── router.js     # 포트폴리오 라우터 (5 endpoints) — analysis/scoring.js의 computeSMA 사용
+│   │   └── router.js     # 포트폴리오 라우터 (5 endpoints) — helpers/sma.js의 computeSMA 사용
 │   ├── watchlist/
 │   │   └── router.js     # 관심종목 라우터 (3 endpoints)
 │   ├── stock/
@@ -59,8 +60,8 @@ app.use('/api', stockRouter);    // /stock/:code, /stocks, /search, /recommendat
 ```
 각 라우터는 `import db from '../../db/connection.js'`로 DB를 직접 import한다 (의존성 주입 없음 — 단순화 의도).
 
-### computeSMA 위치 (분석 도메인)
-SMA5/SMA20 계산은 `domains/analysis/scoring.js`의 `computeSMA(db, code)`로 옮겼다. 보유 종목 라우터(`holding_opinion` 런타임 계산)에서만 호출하지만, 향후 다른 라우터에서도 재사용 가능하도록 분석 도메인 유틸로 분리. `sma_available`은 `sma5 !== null`로 판단한다 (히스토리 5일 이상).
+### computeSMA 위치 (helpers/sma.js)
+SMA5/SMA20 계산은 `helpers/sma.js`의 `computeSMA(db, code)`에 둔다. 분석 도메인(`scoring.js`)에 두면 `portfolio → analysis` 방향의 도메인 의존성이 생기므로, 도메인 간 단방향 원칙을 지키기 위해 helpers/ 수준의 공유 유틸로 분리했다. 포트폴리오 라우터와 분석 도메인 양쪽에서 자유롭게 import 가능. `sma_available`은 `sma5 !== null` (히스토리 ≥5일).
 
 ---
 
@@ -107,7 +108,7 @@ SMA5/SMA20 계산은 `domains/analysis/scoring.js`의 `computeSMA(db, code)`로 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/recommendations` | `market_opinion === '긍정적'` 필터, `source` 포함 |
-| GET | `/api/stock/:code/indicators` | RSI, MACD, 볼린저 + 초보자 요약 |
+| GET | `/api/stock/:code/indicators` | RSI, MACD, 볼린저 + 초보자 요약. **계산 가능 여부 플래그 동봉**: `rsi_available`(히스토리 ≥15일), `macd_available`(≥26일), `bollinger_available`(≥20일), `history_days`. UI는 플래그가 false일 때 "데이터 수집 중" 안내를 표시해야 한다 (sma_available과 동일 패턴) |
 | GET | `/api/stock/:code/volatility` | 변동성 |
 | GET | `/api/stock/:code/financials` | 분기 재무제표 |
 | GET | `/api/stock/:code/news` | 뉴스 10건 |
@@ -147,7 +148,7 @@ SMA5/SMA20 계산은 `domains/analysis/scoring.js`의 `computeSMA(db, code)`로 
 - **추세** (0~2): SMA5/SMA20 배열 (정배열 2.0, 5일선위+역배열 1.0, 20일선위 0.5, 아래 0.0)
 - 합산 ≥7 긍정적, ≥4 중립적, <4 부정적 (임시 임계값 — Phase 4 백테스팅 후 최적화 예정)
 
-### 알림 쿨다운
+### 알림 쿨다운 + 일일 빈도 제어
 | type | 설명 | 쿨다운 |
 |------|------|--------|
 | sell_signal | 5일선+20일선 이중 이탈 | 48h |
@@ -155,6 +156,10 @@ SMA5/SMA20 계산은 `domains/analysis/scoring.js`의 `computeSMA(db, code)`로 
 | sma5_touch | 5일선 근접 지지 | 24h |
 | target_near | 목표가 95% 도달 | 12h |
 | undervalued | 목표가 대비 30%+ 저평가 | 24h |
+
+**일일 알림 한도** (`DAILY_ALERT_LIMIT_PER_STOCK = 2`): 동일 device_id × 동일 종목당 KST 기준 하루 최대 2건. 모든 INSERT 직전에 `SELECT COUNT(*) ... DATE(created_at, 'localtime') = DATE('now', 'localtime')`로 검사. 쿨다운 + 빈도 가드 둘 다 통과해야 발송된다. Push 파이프라인 도입 시 동일 가드를 재사용한다.
+
+**sma5_break / sma5_touch 경계 처리**: 가격이 정확히 SMA5 부근(±1%)이면서 동시에 그 아래일 때 두 알림이 동시 발생하지 않도록, 우선순위는 **이탈(부정적) > 지지(긍정적)**. `if-else if` 구조로 break가 발생하면 touch는 발생시키지 않는다.
 
 ---
 

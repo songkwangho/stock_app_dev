@@ -323,7 +323,7 @@ const App = () => {
                 <span>로딩 중...</span>
               </div>
             }>
-              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onNavigate={navigateTo} onDetailClick={handleNavDetailClick} />}
+              {activeTab === 'dashboard' && <DashboardPage holdings={holdings} onNavigate={navigateTo} onDetailClick={handleNavDetailClick} marketIndices={marketIndices} />}
               {activeTab === 'analysis' && <HoldingsAnalysisPage holdings={holdings} onAdd={addHolding} onUpdate={updateHolding} onDelete={deleteHolding} onDetailClick={handleNavDetailClick} />}
               {activeTab === 'recommendations' && <RecommendationsPage onDetailClick={handleNavDetailClick} />}
               {activeTab === 'watchlist' && <WatchlistPage onDetailClick={handleNavDetailClick} />}

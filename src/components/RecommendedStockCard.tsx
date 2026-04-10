@@ -57,9 +57,21 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
           </div>
         </div>
         {upside && (
-          <div className="mt-2 pt-2 border-t border-slate-800/50 flex items-center justify-center space-x-1.5">
-            <TrendingUp size={12} className="text-emerald-500" />
-            <span className="text-xs font-bold text-emerald-400">알고리즘 추정 적정가 대비 +{upside}%</span>
+          <div className="mt-2 pt-2 border-t border-slate-800/50 space-y-1">
+            <div className="flex items-center justify-center space-x-1.5">
+              <TrendingUp size={12} className="text-emerald-500" />
+              <span className="text-xs font-bold text-emerald-400">
+                {stock.targetPrice && stock.fairPrice === stock.targetPrice
+                  ? `애널리스트 목표가 대비 현재가 괴리 +${upside}%`
+                  : `알고리즘 추정 적정가 대비 현재가 괴리 +${upside}%`}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 text-center leading-relaxed">
+              ※ 이 수치는 실제 수익률이 아니에요.
+              {stock.targetPrice && stock.fairPrice === stock.targetPrice
+                ? ' 애널리스트 목표가는 통상 6~12개월 기준으로, 갱신 시점에 따라 현재 시세와 차이가 있을 수 있어요.'
+                : ' 적정가는 데이터 수집 시점 기준이에요.'}
+            </p>
           </div>
         )}
       </div>

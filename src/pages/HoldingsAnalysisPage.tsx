@@ -258,11 +258,18 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
             <X size={18} />
           </button>
           <p className="text-2xl mb-2">🎉</p>
-          <h3 className="text-lg font-bold text-white mb-2">첫 종목을 추가했어요!</h3>
-          <p className="text-sm text-slate-300 leading-relaxed mb-4">
-            {firstStockGuide.name}의 종합점수, 기술지표, 업종 비교를 한눈에 볼 수 있어요.
-            지표가 어렵게 느껴진다면 [?] 버튼을 눌러 용어 설명을 확인해보세요.
-          </p>
+          <h3 className="text-lg font-bold text-white mb-3">첫 종목을 추가했어요!</h3>
+          <div className="text-sm text-slate-300 leading-relaxed mb-4 space-y-2">
+            <p className="font-bold text-blue-300">지금 할 수 있는 것:</p>
+            <ul className="space-y-1.5 pl-1">
+              <li>• <span className="font-bold text-white">[종목 분석 보기 →]</span> {firstStockGuide.name}의 10점 종합점수, 기술지표, 업종 비교 확인하기</li>
+              <li>• 지표가 어렵게 느껴진다면 각 항목의 <span className="text-blue-400 font-bold">[?]</span> 버튼으로 용어 설명 보기</li>
+              <li>• <span className="text-blue-400">추천 탭</span>에서 다른 종목도 살펴보기</li>
+            </ul>
+            <p className="text-xs text-slate-500 pt-2 border-t border-slate-800/50">
+              이 안내는 한 번만 표시돼요. 다음 종목 추가 시에는 일반 토스트로 안내해요.
+            </p>
+          </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => {
@@ -291,8 +298,16 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
           const isEditing = editingCode === stock.code;
           const evalAmount = (stock.currentPrice || 0) * (stock.quantity || 0);
 
+          const weight = stock.value || 0;
+          const concentrated = weight > 50;
           return (
-            <div key={stock.code} className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 border-l-blue-500/30 border-l-2 transition-all group">
+            <div key={stock.code} className={`bg-slate-900/50 border ${concentrated ? 'border-yellow-500/40' : 'border-slate-800'} rounded-3xl p-6 border-l-blue-500/30 border-l-2 transition-all group`}>
+              {/* 집중도 경고 (>50%) — 한 종목에 비중이 과도하게 쏠린 경우 */}
+              {concentrated && (
+                <div className="mb-4 p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl text-xs text-yellow-300/90 leading-relaxed">
+                  ⚠️ <span className="font-bold">{stock.name} 비중이 {weight}%예요.</span> 한 종목에 집중되면 이 종목 하락 시 손실이 커져요. 분산 투자를 검토해보세요.
+                </div>
+              )}
               {/* Header */}
               <div className="flex justify-between items-start mb-5">
                 <div className="flex items-center space-x-4 cursor-pointer" onClick={() => onDetailClick({ ...stock, category: '보유 종목' })}>

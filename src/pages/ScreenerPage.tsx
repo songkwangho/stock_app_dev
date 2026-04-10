@@ -13,6 +13,7 @@ interface Preset {
   summary: string;
   emoji: string;
   filters: Record<string, string | number>;
+  caveat?: string; // 프리셋 사용 시 사용자가 알아야 할 함정
 }
 
 const PRESETS: Preset[] = [
@@ -22,6 +23,7 @@ const PRESETS: Preset[] = [
     summary: 'PER < 15 + ROE > 10%',
     emoji: '💎',
     filters: { perMax: 15, roeMin: 10 },
+    caveat: '⚠️ 금융·통신·자동차 업종이 많이 포함될 수 있어요. 이 업종은 원래 PER이 낮은 편이라 단순 저평가로 보기 어려워요.',
   },
   {
     name: '안전한 자산주',
@@ -29,6 +31,7 @@ const PRESETS: Preset[] = [
     summary: 'PBR ≤ 1',
     emoji: '🛡️',
     filters: { pbrMax: 1 },
+    caveat: '⚠️ 자산 대비 저평가지만 사업이 부진한 경우도 많아요. ROE를 함께 확인해보세요.',
   },
   {
     name: '고수익 성장주',
@@ -36,6 +39,7 @@ const PRESETS: Preset[] = [
     summary: 'ROE ≥ 20%',
     emoji: '🚀',
     filters: { roeMin: 20 },
+    caveat: '⚠️ 일시적 호황으로 ROE가 높을 수 있어요. 최근 분기 실적도 함께 봐주세요.',
   },
   {
     name: '소액 투자',
@@ -43,6 +47,7 @@ const PRESETS: Preset[] = [
     summary: '주가 ≤ 10만원',
     emoji: '💰',
     filters: { priceMax: 100000 },
+    caveat: '⚠️ 주가가 낮다고 좋은 종목은 아니에요. 시가총액과 사업 내용을 꼭 확인하세요.',
   },
 ];
 
@@ -209,6 +214,17 @@ const ScreenerPage = ({ onDetailClick }: ScreenerPageProps) => {
 
       {!loading && results.length > 0 && (
         <div className="space-y-4">
+          {/* 결과 상단 안내 — 초보자가 결과를 "정답"으로 오해하지 않도록 */}
+          <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 text-xs text-yellow-300/90 leading-relaxed">
+            <p className="font-bold mb-1">📌 아래 종목들은 조건에 맞는 참고 목록이에요</p>
+            <p className="text-yellow-400/70">업종마다 정상 지표 범위가 달라 직접 확인이 필요해요. 투자 결정은 본인이 하세요.</p>
+            {activePreset && (() => {
+              const preset = PRESETS.find(p => p.name === activePreset);
+              return preset?.caveat ? (
+                <p className="mt-2 pt-2 border-t border-yellow-500/20 text-yellow-400/80">{preset.caveat}</p>
+              ) : null;
+            })()}
+          </div>
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-400">{results.length}개 종목을 찾았어요</p>
           </div>

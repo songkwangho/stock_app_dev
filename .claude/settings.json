@@ -35,7 +35,9 @@
       "Bash(sqlite3 \"c:/Users/aistudio/Documents/stock_app_dev/stocks.db\" \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")",
       "Bash(node -e ':*)",
       "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001__TRACKED_VAR__)",
-      "Bash(curl -s -o /dev/null -w '%{http_code}' -H 'X-Device-Id: smoke-test-001' http://localhost:3001__TRACKED_VAR__)"
+      "Bash(curl -s -o /dev/null -w '%{http_code}' -H 'X-Device-Id: smoke-test-001' http://localhost:3001__TRACKED_VAR__)",
+      "Bash(wc -l c:/Users/aistudio/Documents/stock_app_dev/docs/*.md c:/Users/aistudio/Documents/stock_app_dev/CLAUDE.md)",
+      "Bash(curl -s \"http://localhost:3001/api/stock/005930/indicators\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

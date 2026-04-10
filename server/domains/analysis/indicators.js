@@ -1,11 +1,22 @@
 // Technical Indicators Calculation (RSI, MACD, Bollinger) with beginner-friendly summary
+// 각 지표마다 *_available 플래그를 함께 반환한다 (sma_available과 동일 패턴).
+// UI는 플래그가 false일 때 "데이터 수집 중" 안내를 표시해야 한다.
+// 필요 히스토리: RSI 15일, MACD 26일, 볼린저밴드 20일 (해당 일수가 없으면 false)
 export function calculateIndicators(db, code) {
     const history = db.prepare(
         'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date ASC'
     ).all(code);
 
-    if (history.length < 2) {
-        return { rsi: null, macd: null, bollinger: null, summary: null };
+    const histLen = history.length;
+    const availability = {
+        rsi_available: histLen >= 15,
+        macd_available: histLen >= 26,
+        bollinger_available: histLen >= 20,
+        history_days: histLen,
+    };
+
+    if (histLen < 2) {
+        return { rsi: null, macd: null, bollinger: null, summary: null, ...availability };
     }
 
     const prices = history.map(h => h.price);
@@ -87,5 +98,5 @@ export function calculateIndicators(db, code) {
     else if (redCount > greenCount) summary = { signal: '주의', description: '일부 지표가 주의 신호를 보내고 있어요. 신중하게 판단하세요.', details };
     else summary = { signal: '중립', description: '특별한 매수/매도 신호 없이 안정적이에요.', details };
 
-    return { rsi, macd, bollinger, summary };
+    return { rsi, macd, bollinger, summary, ...availability };
 }

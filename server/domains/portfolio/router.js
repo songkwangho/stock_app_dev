@@ -1,7 +1,8 @@
 import express from 'express';
 import db from '../../db/connection.js';
 import { requireDeviceId } from '../../helpers/deviceId.js';
-import { calculateHoldingOpinion, computeSMA } from '../analysis/scoring.js';
+import { calculateHoldingOpinion } from '../analysis/scoring.js';
+import { computeSMA } from '../../helpers/sma.js';
 import { recalcWeights } from './service.js';
 import { getStockData } from '../stock/service.js';
 

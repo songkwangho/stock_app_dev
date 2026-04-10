@@ -414,6 +414,26 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     ? '적정 수준이에요'
                     : stockDetail?.per ? '고평가 구간이에요' : '데이터 없음'}
                 </p>
+                {/* 업종별 PER 맥락 안내 — 초보자가 단순 숫자만 보고 판단하지 않도록 */}
+                {(() => {
+                  const cat = stockDetail?.category || stock.category;
+                  let hint = '';
+                  if (cat?.includes('기술') || cat?.includes('IT')) {
+                    hint = 'IT 기업은 PER 20~40배도 정상이에요. 성장성을 함께 봐야 해요.';
+                  } else if (cat?.includes('금융') || cat?.includes('지주')) {
+                    hint = '금융 기업은 PER 5~15배가 일반적이에요. 단순히 낮다고 저평가는 아니에요.';
+                  } else if (cat?.includes('바이오') || cat?.includes('헬스')) {
+                    hint = '바이오 기업은 R&D 투자로 일시 적자가 많아요. 부실로 단정하지 마세요.';
+                  } else if (cat?.includes('에너지') || cat?.includes('소재')) {
+                    hint = '에너지·소재는 원자재 가격에 따라 PER이 출렁여요.';
+                  }
+                  if (!hint) return null;
+                  return (
+                    <p className="text-[11px] text-blue-400/80 mt-2 leading-relaxed border-t border-slate-800/50 pt-2">
+                      💡 {hint}
+                    </p>
+                  );
+                })()}
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
                 <div className="flex items-center justify-between mb-1">

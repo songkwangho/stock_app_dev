@@ -22,11 +22,12 @@ interface DashboardPageProps {
   holdings: Holding[];
   onNavigate: (tab: string) => void;
   onDetailClick: (stock: StockSummary) => void;
+  marketIndices?: { symbol: string; value: number | null; changeRate: string; positive: boolean }[];
 }
 
 const COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#8b5cf6'];
 
-const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPageProps) => {
+const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = [] }: DashboardPageProps) => {
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
 
@@ -124,9 +125,15 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           value={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(2)}%`}
           positive={avgProfitRate >= 0}
           icon={<ArrowUpRight size={24} />}
-          subtitle={totalCost > 0
-            ? `₩${totalCost.toLocaleString()} → ₩${totalAsset.toLocaleString()} (가중 평균)`
-            : '투자금액 기준 가중 평균'}
+          subtitle={(() => {
+            const kospi = marketIndices.find(m => m.symbol === 'KOSPI');
+            const base = totalCost > 0
+              ? `₩${totalCost.toLocaleString()} → ₩${totalAsset.toLocaleString()} (가중 평균)`
+              : '투자금액 기준 가중 평균';
+            if (!kospi || !kospi.changeRate) return base;
+            // 시장 대비 비교 — KOSPI 당일 변동률 기준 (상세한 기간 비교는 Phase 4 백테스팅 시 도입)
+            return `${base} · 오늘 KOSPI ${kospi.positive ? '+' : ''}${kospi.changeRate}`;
+          })()}
         />
       </div>
 
