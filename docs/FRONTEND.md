@@ -118,17 +118,24 @@ interface WatchlistActions {
 스토어: `useNavigationStore`, `usePortfolioStore`
 - 포트폴리오 요약 (총자산, 수익률 카드, 종목수), 수익률 추이 AreaChart (20일), 자산배분 PieChart, 보유종목 리스트 (읽기전용)
 - 빈 포트폴리오 CTA: `onboarding_done` 설정된 **재방문** 시에만 표시
-- 수익률 카드 subtitle: `₩원금 → ₩평가액 (가중 평균) · 오늘 KOSPI ±N%` — App.tsx에서 `marketIndices` props로 KOSPI 변동률을 받아 시장 대비 맥락을 함께 표시 (당일 변동률 비교, 정밀 백테스팅은 Phase 4)
+- **수익률 카드**:
+  - 제목 "수익률 (투자 대비 수익, 매입가 기준)" — 비교 기준 명시
+  - subtitle: `₩원금 → ₩평가액 (가중 평균)` (KOSPI 라인은 별도 tooltip 영역으로 분리)
+  - **KOSPI 비교 ℹ️ 툴팁**: `StatCard.tooltip` props로 별도 표시 — `오늘 KOSPI ±N%` + 클릭 시 인라인 툴팁 "KOSPI는 오늘 하루 변동률이에요. 내 수익률(매입 이후 전체 기간)과 직접 비교하기 어려워요." 두 수치가 같은 줄에 나란히 표시되지 않도록 분리해 초보자 직접 비교 오해 방지
+- **부분 로딩 처리**: KOSPI 데이터(`marketIndices`)가 비어 있거나 KOSPI 항목이 없으면 tooltip 영역 자체를 숨김. 포트폴리오 히스토리는 차트 영역에서 별도 로딩 스피너로 표시
 - 페이지 하단: "전체 종목 보기" 카드 → MajorStocksPage (모바일 접근성)
-- API: `stockApi.getHoldingsHistory()` (KOSPI 데이터는 App.tsx의 `marketIndices` state에서 props로 전달)
+- API: `stockApi.getHoldingsHistory()` (KOSPI 데이터는 App.tsx의 `marketIndices` state에서 props로 전달, 60초 폴링)
 
 ### HoldingsAnalysisPage (`activeTab === 'analysis'`)
 스토어: `useNavigationStore`, `usePortfolioStore`
 - "보유종목/관심종목" 상단 탭 전환
   - 보유종목 탭: 추가/수정/삭제, 요약 통계, 인라인 편집
   - 관심종목 탭: `WatchlistContent` 컴포넌트 마운트
-- `sma_available === false` → "분석 중" 뱃지 (slate) + "이평선 데이터를 수집 중이에요."
-- `sma_available === true` → `holding_opinion` 뱃지 (표시 라벨은 FRONTEND_UX.md 참조) + 이유 텍스트 + "상세 보기 →"
+- **sma_available + holding_opinion 조합 해석 (필수)**:
+  - `sma_available === false` → 항상 "분석 중" 뱃지 (slate) + "이평선 데이터를 수집 중이에요." 표시. `holding_opinion` 값이 무엇이든(서버는 `'보유'`를 기본값으로 반환) 무시.
+  - `sma_available === true` → `holding_opinion` 뱃지를 실제 신호로 표시 (FRONTEND_UX.md 참조).
+  - **3rd party 클라이언트도 동일 규칙**: 두 필드를 함께 검사. `sma_available=false` 상태에서 `holding_opinion='보유'`를 "보유 신호"로 해석 금지.
+- **수익률 [?] 도움말**: 종목 카드 수익률 헤더에 `HelpCircle` 아이콘 → 클릭 시 인라인 팝오버로 계산식과 예시 표시 (`수익률 = (현재가 - 평단가) ÷ 평단가 × 100`)
 - 수익률 6구간 메시지: ≥20% 🎉 / ≥10% / ≥0% / ≥-3% / ≥-7% / <-7% 🔴 (극단 구간에 "종목 보기 →" 링크)
 - **포트폴리오 집중도 경고**: 종목 비중(`stock.value`)이 **>50%**이면 카드 테두리를 yellow로 강조하고 상단에 "⚠️ [종목명] 비중이 N%예요. 한 종목에 집중되면 이 종목 하락 시 손실이 커져요. 분산 투자를 검토해보세요." 안내 표시
 - **첫 종목 추가 인라인 가이드 카드** (`onboarding_first_stock_guided` 키): `holdings.length === 0`일 때 종목 추가 성공 시 토스트 대신 인라인 가이드 카드 1회 노출. 카드 본문: "🎉 첫 종목을 추가했어요!" + "지금 할 수 있는 것" 체크리스트 (분석 보기 / [?] 도움말 / 추천 탭 둘러보기). 닫으면 키 설정 후 일반 토스트로 전환
@@ -183,9 +190,11 @@ Props: `stock: StockSummary`, `onBack`, `onAdd`, `onUpdate?`
 - 거래량 바차트 (상승=초록, 하락=빨강)
 - 투자자 매매동향: 레이블 "개인 투자자 (일반인)", "외국인 투자자 (해외)", "기관 투자자 (회사·펀드)". 차트 하단: "외국인·기관이 함께 매수하면 긍정적 신호로 보는 경우가 많아요. 단기 흐름만으로 판단하지 마세요"
 - 기술지표 (RSI/MACD/볼린저밴드) + 도움말 텍스트 기본 노출
+- **지표 가용성 폴백** (`*_available === false`): 종합 지표 패널 하단에 "⏳ 일부 지표는 데이터 수집 중이에요" 슬레이트 카드 표시. 각 미계산 지표(RSI 15일 / MACD 26일 / Bollinger 20일)별로 "최소 N일 데이터가 필요해요. 현재 {history_days}일치 수집됨, 약 {N - history_days}일 후 표시돼요." 안내. 에러가 아닌 정보성 톤(slate)
 - PER/PBR/ROE/RSI/MACD/볼린저/투자자동향 각 영역에 `[?]` 버튼 → `HelpBottomSheet`
 - PER/PBR/ROE 컨텍스트 설명 병기 (적자 표시, 업종 대비 저렴/고평가 해석). **업종별 PER 힌트**: PER 카드 하단에 카테고리별 보조 안내 — IT "PER 20~40배도 정상", 금융 "5~15배가 일반적", 바이오 "R&D로 일시 적자 많음", 에너지·소재 "원자재에 따라 출렁임"
 - `ScoringBreakdownPanel`: 10점 스코어 4영역 게이지 바 + 만점대비 비율(80/60/25%)
+- **섹터 비교 백분위**: 섹터 비교 테이블 위에 "📊 이 종목의 업종 내 위치" 박스 — PER/PBR/ROE 각각 백분위 계산해서 "업종 내 상위 25% (✓ 우수한 편)" / "하위 25% (주의 필요)" 4단계로 해석. 단순 평균 비교보다 직관적
 - 재무제표: "(단위: 억 원)" + 1조 이상 "X조 Y,YYY억" 포맷팅
 - 추천 적정가: "알고리즘 추정 적정가(N원) 대비 현재가 괴리 +N%" + "※ 이 수치는 실제 수익률이 아니에요"
 - 보유: holding_opinion 기반 수정 폼 / 비보유: 추가 폼. 추가 완료 시 토스트 + "보러가기" 액션 (첫 종목은 인라인 가이드 카드)
@@ -236,7 +245,9 @@ WatchlistPage + HoldingsAnalysisPage 관심종목 탭이 공유. `useWatchlistSt
 Props: `active`, `onClick`, `icon`, `label` — 활성 스타일링, 화살표 인디케이터
 
 ### StatCard
-Props: `title`, `value`, `change?`, `positive?`, `icon`, `subtitle?` — subtitle로 "투자금액 기준 가중 평균" 등 표시
+Props: `title`, `value`, `change?`, `positive?`, `icon`, `subtitle?`, `tooltip?: { label: string; text: string }`
+- subtitle로 "투자금액 기준 가중 평균" 등 표시
+- `tooltip` props가 있으면 카드 하단에 별도 라인으로 `label` + ℹ️ 아이콘 표시. 클릭 시 absolute 팝오버로 `text` 표시 + "알겠어요" 닫기 버튼. 사용자가 두 수치(예: 내 수익률 vs KOSPI)를 직접 비교하지 않도록 시각적으로 분리
 
 ---
 
@@ -320,10 +331,15 @@ PC/태블릿 (md: 이상):
   관심종목·스크리너·주요종목은 각 페이지 내부 링크로 접근
 ```
 
+**검색바 (App.tsx)**:
+- 디바운스 300ms, 결과 드롭다운에 `market_opinion` 뱃지 표시
+- **빈 검색 결과 안내**: `searchQuery.length >= 2 && results.length === 0 && !isSearching`이면 빈 드롭다운 대신 안내 카드 — "'{검색어}' 종목을 찾을 수 없어요. 현재 97개 주요 종목만 지원해요." + `[전체 종목 보기 →]` 버튼 (MajorStocksPage 이동)
+
 **헤더 알림 패널 반응형**:
 - PC: 헤더 우측 드롭다운 (`absolute top-full right-0`, max-h-96 스크롤)
 - 모바일: 전체 화면 모달 (`fixed inset-0`, backdrop 포함) — 내부 스크롤 ↔ 페이지 스크롤 충돌 회피
 - 모바일 탭바 "알림" 탭도 동일 상태 `showAlerts` 토글 (별도 페이지 아님)
+- **첫 진입 1회 안내 카드** (`onboarding_alerts_explained`): 패널 상단에 "📬 알림은 어떻게 동작하나요?" 박스 — 보유·관심 종목 가격 변화, 하루 1회 갱신 (실시간 아님), 동일 종목당 일 2건 제한, 본인 판단 강조. [확인했어요] → 키 설정 후 카드 닫힘
 - 각 알림 항목: `[지금 확인하기]`(종목 상세 이동 + 패널 닫기) / `[나중에 볼게요]`(패널만 닫기). 우측 휴지통은 stopPropagation으로 단건 삭제 전용.
 
 **상세뷰 네비게이션**: `goBack()` → `previousTab`으로 복귀. 보유종목 진입 → analysis 탭.

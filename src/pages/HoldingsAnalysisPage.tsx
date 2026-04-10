@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle, Eye } from 'lucide-react';
+import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle, Eye, HelpCircle } from 'lucide-react';
 import StockSearchInput from '../components/StockSearchInput';
 import WatchlistContent from '../components/WatchlistContent';
 import { useNavigationStore } from '../stores/useNavigationStore';
@@ -29,12 +29,21 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [subTab, setSubTab] = useState<'holdings' | 'watchlist'>('holdings');
   // 첫 종목 추가 직후 1회 인라인 가이드 카드 ('onboarding_first_stock_guided')
   const [firstStockGuide, setFirstStockGuide] = useState<{ code: string; name: string } | null>(null);
+  // 수익률 계산식 [?] 툴팁 (종목별 1개)
+  const [profitHelpCode, setProfitHelpCode] = useState<string | null>(null);
 
-  // 온보딩에서 진입 시 검색창 자동 노출
+  // 페이지 진입 시 pendingFocus 처리:
+  //  - 'add-holding-search': 온보딩 → 검색 폼 자동 노출
+  //  - 'first-stock-guide':  StockDetailView에서 첫 종목 추가 직후 진입 → 가이드 카드 노출
   useEffect(() => {
     const focus = useNavigationStore.getState().consumePendingFocus();
     if (focus === 'add-holding-search') setShowAddForm(true);
-  }, []);
+    if (focus === 'first-stock-guide' && holdings.length > 0 && !localStorage.getItem('onboarding_first_stock_guided')) {
+      const just = holdings[0];
+      setFirstStockGuide({ code: just.code, name: just.name });
+      localStorage.setItem('onboarding_first_stock_guided', '1');
+    }
+  }, [holdings]);
 
   const showToast = (type: 'success' | 'error', text: string, action?: { label: string; onClick: () => void }) => {
     setToast({ type, text, action });
@@ -319,8 +328,34 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     <p className="text-xs text-slate-500 font-mono">{stock.code}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">수익률</p>
+                <div className="text-right relative">
+                  <div className="flex items-center justify-end space-x-1.5 mb-1">
+                    <p className="text-xs text-slate-500 uppercase tracking-widest">수익률</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setProfitHelpCode(profitHelpCode === stock.code ? null : stock.code); }}
+                      className="text-slate-600 hover:text-blue-400 min-w-[24px] min-h-[24px] flex items-center justify-center"
+                      aria-label="수익률 계산식"
+                    >
+                      <HelpCircle size={12} />
+                    </button>
+                  </div>
+                  {profitHelpCode === stock.code && (
+                    <div className="absolute right-0 top-7 z-10 w-64 bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-xl text-left">
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        수익률 = (현재가 - 평단가) ÷ 평단가 × 100
+                      </p>
+                      <p className="text-xs text-slate-500 leading-relaxed mt-2">
+                        예: 평단가 70,000원, 현재가 73,500원<br />
+                        → (73,500 - 70,000) ÷ 70,000 × 100 = <span className="text-emerald-400 font-bold">+5.0%</span>
+                      </p>
+                      <button
+                        onClick={() => setProfitHelpCode(null)}
+                        className="text-xs text-blue-400 font-bold mt-2"
+                      >
+                        알겠어요
+                      </button>
+                    </div>
+                  )}
                   <p className={`text-xl font-black ${parseFloat(profitRate) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                     {parseFloat(profitRate) >= 0 ? '+' : ''}{profitRate}%
                   </p>

@@ -24,6 +24,11 @@
   - **알림 일일 빈도 가드**: `DAILY_ALERT_LIMIT_PER_STOCK = 2`. 모든 INSERT 직전 `SELECT COUNT(*) ... DATE(created_at, 'localtime') = DATE('now', 'localtime')`로 검사. 5종 알림(sma5_break/touch/sell_signal/target_near/undervalued) 모두 적용.
   - **sma5_break / sma5_touch 경계 중복 수정**: 가격이 SMA5 ±1% 부근이면서 동시에 그 아래일 때 두 알림이 함께 발생하던 엣지 케이스 해소. `if-else if` 구조로 이탈 우선.
   - **지표 가용성 플래그**: `calculateIndicators` 응답에 `rsi_available`(≥15일), `macd_available`(≥26일), `bollinger_available`(≥20일), `history_days` 추가. UI는 `sma_available`과 동일 패턴으로 "데이터 수집 중" 안내를 표시할 수 있음.
+- **12차 도메인 지식 기반 보완**:
+  - **알림 메시지 템플릿 BACKEND.md 명시**: 5종 알림 각각의 실제 메시지 텍스트를 표로 정리. 신규 알림 추가 시 톤 일관성 유지 + 금지 표현 ("매도를 검토해 주세요" 등) 명시.
+  - **cleanupOldData ↔ algorithm 추천 정합성 명세**: stock_analysis는 source 구분 없이 20일+ 삭제되므로 algorithm 추천은 매일 syncAllStocks로만 갱신됨. 의도된 동작임을 BACKEND.md에 명시.
+  - **scoring.js 주석 강화**: "computeSMA는 helpers/sma.js에 있음 — 중복 정의 금지" 주석으로 LLM이 작업 시 이전 버전을 재참조해 중복 정의하는 위험 방지.
+  - **portfolio/router.js import 경로 BACKEND.md 명시**: `import { computeSMA } from '../../helpers/sma.js'` 경로를 디렉토리 트리에 포함.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건
@@ -40,8 +45,9 @@
 - 면책 고지 7곳: ① 면책 모달 ② 추천 페이지 상단 ③ 종목 상세 종합의견 박스 ④ 종목 상세 분석 하단 ⑤ 추천 카드 하단 ⑥ HoldingsAnalysisPage 주의필요/추가검토 뱃지 하단 ⑦ ScoringBreakdownPanel 상단
 - HoldingOpinion 표시 라벨 소프트화: "매도" → "주의 필요", "추가매수" → "추가 검토" (내부 값 유지, 호환성 보존)
 - ALERT_TYPE_LABELS 중립화: "매도 신호" → "가격 하락 경고", "매수 타이밍" → "가격 지지 알림" 등
-- 온보딩: 면책 모달 → 종목 추가 안내 → 첫 종목 추가 인라인 가이드(1회) → 대시보드 CTA(재방문 시만)
-- localStorage 키 3개: `disclaimer_accepted`, `onboarding_done`, `onboarding_first_stock_guided`
+- 온보딩 4단계: 면책 모달 → 종목 추가 안내 → 첫 종목 추가 인라인 가이드(1회) → 알림 패널 첫 진입 안내(1회). 대시보드 CTA는 재방문 시만
+- **첫 종목 가이드 두 진입 경로 모두 지원**: HoldingsAnalysisPage 검색 폼 + StockDetailView 추가 폼. 후자는 add 직전 holdings 스냅샷 후 성공 시 `navigateTo('analysis', { focus: 'first-stock-guide' })`로 라우팅
+- localStorage 키 4개: `disclaimer_accepted`, `onboarding_done`, `onboarding_first_stock_guided`, `onboarding_alerts_explained`
 
 **스코어링/지표 시각화**:
 - ScoringBreakdownPanel: 면책 문구 패널 상단 배치 → 4영역 게이지 바 + value/max 점수 텍스트 병기 (색각이상 대응) + 만점대비 비율(80/60/25%) 한국어 해석
@@ -49,14 +55,16 @@
 - 차트 라인/캔들 토글, 업종 비교는 중앙값 기준
 
 **보유종목/추천 UX**:
-- holding_opinion 구체적 이유 + "상세 보기 →" 행동유도 링크. sma_available=false 시 "분석 중" 뱃지
-- 수익률 6구간 메시지 + 극단 구간(≥20%, ≤-7%)에 "종목 보기 →" 링크
+- holding_opinion 구체적 이유 + "상세 보기 →" 행동유도 링크. sma_available=false 시 "분석 중" 뱃지 (sma_available + holding_opinion 조합 검사 필수)
+- 수익률 6구간 메시지 + 극단 구간(≥20%, ≤-7%)에 "종목 보기 →" 링크. 수익률 헤더에 [?] 인라인 팝오버 (계산식 + 예시)
 - 추천 source accordion: reason 텍스트 + source별 신뢰도 설명
 - **추천 카드 상승여력 표현**: "상승여력 +N%" → **"적정가 대비 현재가 괴리 +N%"** + "※ 이 수치는 실제 수익률이 아니에요" 면책. 애널리스트 목표가 기준은 "통상 6~12개월 기준" 안내 추가
 - 스크리너 결과 상단 yellow 안내 + 활성 프리셋의 함정(`caveat`) 노출. 4개 프리셋 모두 caveat 정의됨
 - StockDetailView PER 카드 하단 업종별 힌트 (IT/금융/바이오/에너지 4개 카테고리)
 - 포트폴리오 집중도 >50% 카드 yellow 테두리 + 분산 투자 권유 안내
-- DashboardPage 수익률 카드: KOSPI 당일 변동률 병기 (App.tsx의 marketIndices props 전달)
+- **섹터 비교 백분위**: PER/PBR/ROE 각각 업종 내 백분위 → "상위 25% (✓ 우수한 편)" 등 4단계 해석. 단순 평균 비교보다 직관적
+- **지표 가용성 폴백 UI**: RSI/MACD/볼린저 `*_available === false` 시 "⏳ 일부 지표는 데이터 수집 중이에요" 안내 카드 (필요 일수 - 현재 일수 = N일 후 표시 안내)
+- **DashboardPage 수익률 카드 분리**: KOSPI 당일 변동률을 같은 줄이 아닌 별도 ℹ️ tooltip 라인으로 분리. 클릭 시 "KOSPI는 오늘 하루 변동률이에요. 내 수익률(매입 이후 전체 기간)과 직접 비교하기 어려워요" 인라인 팝오버. 카드 제목도 "수익률 (투자 대비 수익, **매입가 기준**)"으로 비교 기준 명시. KOSPI 데이터 미수신 시 tooltip 라인 자체 숨김
 
 **데이터 표시 + 검색**:
 - utils/dataFreshness.ts: parseServerDate() 헬퍼로 SQLite UTC를 명시 UTC 해석, KST 고정 변환. getDataFreshnessLabel/Short 통일
@@ -107,13 +115,13 @@
 | ~~알림 일일 빈도 가드~~ | ~~동일 종목 폭주 가능~~ | ✅ 11차에서 `DAILY_ALERT_LIMIT_PER_STOCK = 2` 적용 |
 | ~~지표 가용성 플래그 부재~~ | ~~신규 종목·서버 초기에 RSI/MACD 부정확~~ | ✅ 11차에서 `*_available` 플래그 추가 |
 | ~~computeSMA 도메인 의존성~~ | ~~portfolio → analysis 단방향 위배~~ | ✅ 11차에서 `helpers/sma.js`로 재이동 |
-| device_id 보안 | CORS+Rate limit 적용 | HMAC 서명 + B안 강제 재등록 (P2-1). B안 시 사용자 안내 화면 설계 필요 |
-| SQLite 블로킹 | 5초 지연 실행으로 완화 | PostgreSQL 전환 (P2-3). 사전: syncAllStocks() 비동기 재작성 범위 산정 |
-| 스크래핑 의존 | 핵심 데이터 네이버 스크래핑 | KIS/KRX 분리 평가 (P2-4, 시나리오 B 우선) |
-| 알림 이중 발송 | 배치 알림만 존재 | Push+배치 단일 파이프라인 (P3). 일 N건 빈도 제어 |
-| 스코어 임계값 검증 | 임시값(7/4점), 주석 추가됨 | 장기 데이터 적재 → 백테스팅 (P4). 스크립트 즉시 착수 |
-| 공휴일 장중/장외 판단 | 평일 9~16시만 판단 | 공휴일 캘린더 통합 (P3 후속) |
+| device_id 보안 | CORS+Rate limit 적용 | **Phase 5**로 이동 (구독 도입 시점). HMAC + B안 강제 재등록 + 사용자 안내 화면 |
+| SQLite 블로킹 | 5초 지연 실행으로 완화 | P2-1: better-sqlite3 사용 패턴 전수 조사. P5 이후 PostgreSQL 전환 |
+| 스크래핑 의존 | 핵심 데이터 네이버 스크래핑 | P2-3: KIS/KRX 분리 평가 (시나리오 B 우선) |
+| 알림 이중 발송 | 배치 알림만 존재 | P3-6: Push+배치 단일 파이프라인. 일 N건 빈도 가드는 이미 11차에서 적용 완료 |
+| 스코어 임계값 검증 | 임시값(7/4점), 주석 추가됨 | P2-2: 적재 스크립트 즉시 작성 → P4: 백테스팅 |
+| 공휴일 장중/장외 판단 | 평일 9~16시만 판단 | 공휴일 캘린더 통합 (Phase 3 후속) |
 | 검색 LIKE 풀스캔 | 97종목에서 무시 가능 | 1000+ 시 FTS 인덱스 도입 |
-| 번들 크기 측정 | 미측정 | P3 사전: rollup-plugin-visualizer. <250KB gzip 목표. Recharts 동적 import 검토 |
-| 앱스토어 분류 전략 | "Utilities" 잠정 결정 | P3: 심사 노트 초안 작성 ("거래 기능 없음" 강조) |
-| 섹터별 스코어링 가중치 | 바이오에 PER 밸류에이션 부적합 | P4: 섹터별 가중치 테이블 도입 검토 |
+| 번들 크기 측정 | 미측정 | P3-1: Recharts lazy import → 번들 측정 (rollup-plugin-visualizer). <250KB gzip 목표 |
+| ~~앱스토어 분류 전략~~ | ~~잠정~~ | ✅ "Utilities" 결정 (Finance 심사 리스크 회피) |
+| 섹터별 스코어링 가중치 | 바이오에 PER 밸류에이션 부적합 | P4: 섹터별 가중치 테이블 도입 |

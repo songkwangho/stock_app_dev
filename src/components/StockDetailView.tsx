@@ -11,6 +11,8 @@ import type { StockSummary, StockDetail, ChartDataPoint, TechnicalIndicators, Ne
 import ScoringBreakdownPanel from './ScoringBreakdownPanel';
 import HelpBottomSheet, { type HelpTermKey } from './HelpBottomSheet';
 import { getDataFreshnessLabel } from '../utils/dataFreshness';
+import { usePortfolioStore } from '../stores/usePortfolioStore';
+import { useNavigationStore } from '../stores/useNavigationStore';
 
 interface StockDetailViewProps {
   stock: StockSummary;
@@ -544,6 +546,28 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   })}
                 </div>
 
+                {/* 지표 가용성 안내 — 히스토리 부족으로 일부 지표 미계산 시 (sma_available과 동일 패턴) */}
+                {(() => {
+                  const histDays = indicators.history_days ?? 0;
+                  const pending: { name: string; need: number }[] = [];
+                  if (indicators.rsi_available === false) pending.push({ name: 'RSI', need: 15 });
+                  if (indicators.macd_available === false) pending.push({ name: 'MACD', need: 26 });
+                  if (indicators.bollinger_available === false) pending.push({ name: '볼린저밴드', need: 20 });
+                  if (pending.length === 0) return null;
+                  return (
+                    <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                      <p className="text-xs font-bold text-slate-300 mb-2">⏳ 일부 지표는 데이터 수집 중이에요</p>
+                      <div className="space-y-1.5">
+                        {pending.map(p => (
+                          <p key={p.name} className="text-xs text-slate-500 leading-relaxed">
+                            <span className="font-bold text-slate-400">{p.name}</span> — 최소 {p.need}일 데이터가 필요해요. 현재 {histDays}일치 수집됨, 약 {Math.max(0, p.need - histDays)}일 후 표시돼요.
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* 변동성 */}
                 <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800/50 flex items-center justify-between">
                   <div>
@@ -635,13 +659,44 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             )}
 
             {/* Sector Comparison */}
-            {sectorData && sectorData.stocks.length > 1 && (
+            {sectorData && sectorData.stocks.length > 1 && (() => {
+              // 현재 종목의 업종 내 백분위 계산 — "나는 어디 위치인가" 맥락 제공
+              const me = sectorData.stocks.find(s => s.code === stock.code);
+              const computePercentile = (key: 'per' | 'pbr' | 'roe', lowerIsBetter: boolean) => {
+                const myVal = me?.[key];
+                if (myVal === null || myVal === undefined) return null;
+                const others = sectorData.stocks.map(s => s[key]).filter((v): v is number => v !== null && v !== undefined && v > 0);
+                if (others.length < 2) return null;
+                const sorted = [...others].sort((a, b) => a - b);
+                const rank = sorted.findIndex(v => v >= myVal); // 0-indexed
+                const pct = Math.round((rank / sorted.length) * 100); // 하위 N%
+                return lowerIsBetter ? pct : 100 - pct; // PER/PBR은 낮을수록 좋음
+              };
+              const perPct = computePercentile('per', true);
+              const pbrPct = computePercentile('pbr', true);
+              const roePct = computePercentile('roe', false);
+              const interpret = (pct: number | null, label: string) => {
+                if (pct === null) return null;
+                const tier = pct <= 25 ? '상위 25%' : pct <= 50 ? '상위 50%' : pct <= 75 ? '하위 50%' : '하위 25%';
+                const tone = pct <= 50 ? '✓ 우수한 편' : '주의 필요';
+                return `${label}: 업종 내 ${tier} (${tone})`;
+              };
+              return (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">같은 업종 비교</h3>
-                <p className="text-xs text-slate-500 mb-4">
+                <p className="text-xs text-slate-500 mb-3">
                   <span className="text-blue-400 font-bold">{sectorData.category}</span> 업종 중앙값과 비교해요.
                   PER이 중앙값보다 낮고 ROE가 높으면 좋아요!
                 </p>
+                {/* 업종 내 백분위 요약 — 평균값 비교보다 직관적 */}
+                {(perPct !== null || pbrPct !== null || roePct !== null) && (
+                  <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl space-y-1">
+                    <p className="text-xs font-bold text-blue-300 mb-1">📊 이 종목의 업종 내 위치</p>
+                    {perPct !== null && <p className="text-xs text-blue-200/90">{interpret(perPct, 'PER')}</p>}
+                    {pbrPct !== null && <p className="text-xs text-blue-200/90">{interpret(pbrPct, 'PBR')}</p>}
+                    {roePct !== null && <p className="text-xs text-blue-200/90">{interpret(roePct, 'ROE')}</p>}
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50">
                   <div className="text-center">
                     <p className="text-xs text-slate-500 mb-1">업종 중앙값 PER</p>
@@ -701,7 +756,8 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   </table>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* News (Phase 2 지연 로딩) */}
             {news === null && (
@@ -872,11 +928,21 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     )}
                     <button onClick={async () => {
                       setAdding(true);
+                      // 첫 종목인지 미리 스냅샷 — addHolding이 holdings를 갱신하기 전에 확인
+                      const wasFirstStock = usePortfolioStore.getState().holdings.length === 0
+                        && !localStorage.getItem('onboarding_first_stock_guided');
                       try {
                         await onAdd({ code: stock.code, name: stockDetail?.name || stock.name,
                           avgPrice: parseInt(addForm.avgPrice), value: parseInt(addForm.weight),
                           quantity: parseInt(addForm.quantity || '0') });
-                        onBack();
+                        if (wasFirstStock) {
+                          // StockDetailView(추천/검색에서 진입한 케이스)에서 첫 종목 추가 시:
+                          // HoldingsAnalysisPage로 이동하면서 첫 종목 가이드 카드 노출 트리거.
+                          // 현재 페이지에 머무르면 사용자는 분석 결과·원금 비중을 확인할 새 진입점을 놓치게 된다.
+                          useNavigationStore.getState().navigateTo('analysis', { focus: 'first-stock-guide' });
+                        } else {
+                          onBack();
+                        }
                       } catch (err) { console.error('Failed to add:', err); } finally { setAdding(false); }
                     }} disabled={adding}
                       className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 min-h-[44px]">

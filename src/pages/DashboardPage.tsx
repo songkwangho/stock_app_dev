@@ -121,18 +121,21 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
           icon={<LayoutDashboard size={24} />}
         />
         <StatCard
-          title="수익률 (투자 대비 수익)"
+          title="수익률 (투자 대비 수익, 매입가 기준)"
           value={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(2)}%`}
           positive={avgProfitRate >= 0}
           icon={<ArrowUpRight size={24} />}
-          subtitle={(() => {
+          subtitle={totalCost > 0
+            ? `₩${totalCost.toLocaleString()} → ₩${totalAsset.toLocaleString()} (가중 평균)`
+            : '투자금액 기준 가중 평균'}
+          tooltip={(() => {
             const kospi = marketIndices.find(m => m.symbol === 'KOSPI');
-            const base = totalCost > 0
-              ? `₩${totalCost.toLocaleString()} → ₩${totalAsset.toLocaleString()} (가중 평균)`
-              : '투자금액 기준 가중 평균';
-            if (!kospi || !kospi.changeRate) return base;
-            // 시장 대비 비교 — KOSPI 당일 변동률 기준 (상세한 기간 비교는 Phase 4 백테스팅 시 도입)
-            return `${base} · 오늘 KOSPI ${kospi.positive ? '+' : ''}${kospi.changeRate}`;
+            // KOSPI 데이터 미수신 시 비교 라인 자체를 숨김 (부분 로딩 상태에서 잘못된 비교 방지)
+            if (!kospi || !kospi.changeRate) return undefined;
+            return {
+              label: `오늘 KOSPI ${kospi.positive ? '+' : ''}${kospi.changeRate}`,
+              text: 'KOSPI는 오늘 하루 변동률이에요. 내 수익률(매입 이후 전체 기간)과 직접 비교하기 어려워요. 정밀한 같은 기간 비교는 Phase 4 백테스팅 모듈에서 도입돼요.',
+            };
           })()}
         />
       </div>

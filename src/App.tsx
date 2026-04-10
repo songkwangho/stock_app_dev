@@ -48,6 +48,8 @@ const App = () => {
 
   const [showAlerts, setShowAlerts] = useState(false);
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
+  // 알림 패널 첫 진입 1회 안내 (4번째 onboarding 키)
+  const [alertsExplained, setAlertsExplained] = useState(() => !!localStorage.getItem('onboarding_alerts_explained'));
 
   useEffect(() => {
     fetchHoldings();
@@ -208,6 +210,23 @@ const App = () => {
                 ))}
               </div>
             )}
+            {/* 빈 검색 결과 안내 — 등록된 97개 종목 외에는 검색되지 않음을 명시 */}
+            {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+              <div className="absolute top-full left-0 w-full mt-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-5">
+                <p className="text-sm text-slate-300 leading-relaxed mb-3">
+                  '<span className="font-bold text-white">{searchQuery}</span>' 종목을 찾을 수 없어요.
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  현재 97개 주요 종목만 지원해요. 전체 목록에서 찾아보세요.
+                </p>
+                <button
+                  onClick={() => { navigateTo('major'); setSearchQuery(''); setSearchResults([]); }}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors"
+                >
+                  전체 종목 보기 →
+                </button>
+              </div>
+            )}
           </div>
           </div>
 
@@ -242,6 +261,24 @@ const App = () => {
                     </button>
                   </div>
                   <div className="flex-1 overflow-auto md:max-h-96">
+                    {/* 첫 진입 1회 안내 카드 (onboarding_alerts_explained) */}
+                    {!alertsExplained && (
+                      <div className="m-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                        <p className="text-sm font-bold text-blue-300 mb-2">📬 알림은 어떻게 동작하나요?</p>
+                        <ul className="text-xs text-slate-300 leading-relaxed space-y-1">
+                          <li>• 보유·관심 종목의 가격 변화를 알려드려요.</li>
+                          <li>• 데이터는 <span className="font-bold">하루 1회</span> 갱신 기준이에요 (실시간 아님).</li>
+                          <li>• 동일 종목당 하루 최대 2건만 발송돼요.</li>
+                          <li>• 투자 결정은 항상 본인이 직접 해주세요.</li>
+                        </ul>
+                        <button
+                          onClick={() => { localStorage.setItem('onboarding_alerts_explained', '1'); setAlertsExplained(true); }}
+                          className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors"
+                        >
+                          확인했어요
+                        </button>
+                      </div>
+                    )}
                     {alerts.length === 0 ? (
                       <div className="p-8 text-center">
                         <p className="text-2xl mb-2">🔔</p>
