@@ -47,8 +47,11 @@ export const stockApi = {
         const response = await axios.post(`${API_BASE_URL}/holdings`, stock);
         return response.data;
     },
-    updateHolding: async (stock: { code: string, name: string, avgPrice: number, weight: number, quantity?: number }) => {
-        const response = await axios.post(`${API_BASE_URL}/holdings`, stock);
+    updateHolding: async (stock: { code: string, avgPrice: number, quantity?: number }) => {
+        const response = await axios.put(`${API_BASE_URL}/holdings/${stock.code}`, {
+            avgPrice: stock.avgPrice,
+            quantity: stock.quantity,
+        });
         return response.data;
     },
     deleteHolding: async (code: string) => {

@@ -181,40 +181,48 @@ export function calculateTechnicalScore(db, code) {
     };
 }
 
-// Supply/Demand Score: 0.0 ~ 2.0
+// Supply/Demand Score: 0.0 ~ 2.0 (가중 감쇠 방식)
+// 최근일에 높은 가중치, 오래된 날에 낮은 가중치 (decay factor 0.8)
 export function calculateSupplyDemandScore(db, code) {
     const rows = db.prepare(
         'SELECT date, institution, foreign_net FROM investor_history WHERE code = ? ORDER BY date DESC LIMIT 20'
     ).all(code);
     if (rows.length < 3) return { total: 0, detail: {} };
 
+    const DECAY = 0.8; // 하루마다 20% 감쇠
+
+    // 연속 매수일 카운트 (기존 호환)
     let consecutiveForeignBuy = 0;
     for (const r of rows) {
         if (r.foreign_net > 0) consecutiveForeignBuy++;
         else break;
     }
-
     let consecutiveInstBuy = 0;
     for (const r of rows) {
         if (r.institution > 0) consecutiveInstBuy++;
         else break;
     }
 
-    const foreignScore = consecutiveForeignBuy >= 5 ? 1.2
-        : consecutiveForeignBuy >= 3 ? 0.84
-        : consecutiveForeignBuy >= 1 ? 0.36 : 0;
-
-    const instScore = consecutiveInstBuy >= 5 ? 0.8
-        : consecutiveInstBuy >= 3 ? 0.56
-        : consecutiveInstBuy >= 1 ? 0.24 : 0;
+    // 가중 감쇠 점수: 최근 10일 대상, 매수일에 decay^i 가중치 부여
+    let foreignWeighted = 0, instWeighted = 0;
+    const lookback = Math.min(10, rows.length);
+    for (let i = 0; i < lookback; i++) {
+        const weight = Math.pow(DECAY, i);
+        if (rows[i].foreign_net > 0) foreignWeighted += weight;
+        if (rows[i].institution > 0) instWeighted += weight;
+    }
+    // 정규화: 10일 모두 매수 시 최대 ~4.46 (geometric sum) → 1.2/0.8 스케일
+    const maxWeighted = (1 - Math.pow(DECAY, lookback)) / (1 - DECAY);
+    const foreignScore = parseFloat(Math.min(1.2, (foreignWeighted / maxWeighted) * 1.2).toFixed(2));
+    const instScore = parseFloat(Math.min(0.8, (instWeighted / maxWeighted) * 0.8).toFixed(2));
 
     return {
         total: parseFloat(Math.min(2.0, foreignScore + instScore).toFixed(2)),
         detail: {
             foreignConsecutive: consecutiveForeignBuy,
             instConsecutive: consecutiveInstBuy,
-            foreignScore: parseFloat(foreignScore.toFixed(2)),
-            instScore: parseFloat(instScore.toFixed(2))
+            foreignScore,
+            instScore
         }
     };
 }
@@ -239,10 +247,30 @@ export function calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20) {
     const lossRate = (currentPrice - avgPrice) / avgPrice;
     const STOP_LOSS = -0.07;
 
+    // 1. 손절 체크 (SMA 불필요)
     if (lossRate <= STOP_LOSS) return '매도';
-    if (sma5 && sma20 && currentPrice < sma5 && currentPrice < sma20) return '매도';
-    if (sma5 && sma20 && currentPrice < sma5 && currentPrice >= sma20) return '관망';
-    if (sma5 && currentPrice >= sma5 && currentPrice <= sma5 * 1.01) return '추가매수';
-    if (sma5 && sma20 && currentPrice > sma5 && sma5 > sma20) return '보유';
+
+    // SMA 데이터 부족 시 손절 외에는 판단 불가 → 보유 유지
+    if (!sma5) return '보유';
+
+    // 2. 이중 이평선 이탈 (sma20 필요)
+    if (sma20 && currentPrice < sma5 && currentPrice < sma20) return '매도';
+
+    // 3. 단기 이탈 + 중기 지지 (sma20 필요)
+    if (sma20 && currentPrice < sma5 && currentPrice >= sma20) return '관망';
+
+    // sma20 없으면 5일선만으로 판단
+    if (!sma20) {
+        if (currentPrice < sma5) return '관망';
+        if (currentPrice >= sma5 && currentPrice <= sma5 * 1.01) return '추가매수';
+        return '보유';
+    }
+
+    // 4. 5일선 근접 지지
+    if (currentPrice >= sma5 && currentPrice <= sma5 * 1.01) return '추가매수';
+
+    // 5. 정배열 유지
+    if (currentPrice > sma5 && sma5 > sma20) return '보유';
+
     return '보유';
 }

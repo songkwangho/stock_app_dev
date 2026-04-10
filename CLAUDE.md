@@ -22,12 +22,10 @@
 ---
 
 ## 프로젝트 구조
-
-### 프로젝트 구조
 ```
 stock_app_dev/
 ├── server/
-│   ├── server.js             # Express 라우트 + getStockData (~1,230줄)
+│   ├── server.js             # Express 라우트 28개 + recalcWeights (~900줄)
 │   ├── index.js              # 진입점 래퍼
 │   ├── db/
 │   │   ├── connection.js     # DB 연결 (better-sqlite3)
@@ -46,12 +44,13 @@ stock_app_dev/
 │   │   ├── alert/
 │   │   │   └── service.js    # generateAlerts + ALERT_COOLDOWNS
 │   │   └── stock/
+│   │       ├── service.js    # getStockData + syncAllStocks + scheduleDaily8AM
 │   │       └── data.js       # topStocks (97개) + initialRecommendations (20개)
 │   └── scheduler.js          # setupScheduler + setupCleanup
 ├── stocks.db                 # SQLite 데이터베이스 (개발 환경)
 ├── public/charts/            # 토스증권 차트 캡처 이미지
 ├── src/
-│   ├── App.tsx               # 메인 레이아웃 + 네비게이션
+│   ├── App.tsx               # 메인 레이아웃 + 반응형 네비게이션
 │   ├── api/stockApi.ts       # Axios API 클라이언트
 │   ├── storage/
 │   │   └── deviceId.ts       # DeviceIdStorage 인터페이스 + Web 구현체
@@ -70,9 +69,6 @@ stock_app_dev/
 │   └── FRONTEND.md           # 프론트엔드 상세 문서
 └── package.json
 ```
-
-> **server.js 잔존 코드** (~1,230줄): 라우트 핸들러 23개 + `getStockData` + `syncAllStocks` + `recalcWeights`
-> 향후 `domains/portfolio/`, `domains/stock/service.js`로 추가 분리 가능
 
 ---
 
@@ -99,7 +95,7 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
   - 포트폴리오: `usePortfolioStore`
   - 알림: `useAlertStore`
 - **반응형 레이아웃**: PC 사이드바(`hidden md:flex`) + 모바일 하단 탭바(`fixed bottom-0 md:hidden`)
-- **초보자 UX 원칙** (구현 완료):
+- **초보자 UX 원칙**:
   - PER/PBR/ROE 등 재무지표에 항상 한국어 컨텍스트 설명 병기
   - `ScoringBreakdownPanel`로 10점 스코어를 게이지 바 + 한국어 해석으로 시각화
   - 차트는 기본 라인 차트, 토글로 캔들 차트 전환 가능
@@ -109,38 +105,20 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
 
 ### 사용자 식별 (device_id 방식)
 - 로그인 없음. 기기 기반 익명 식별자로 개인 데이터 분리
-- **프론트**: `DeviceIdStorage` 인터페이스를 통해 환경별 구현체를 교체 가능하게 추상화 (구현 완료)
-  - Web: `localStorage` 기반 (`WebDeviceIdStorage`)
-  - Capacitor 앱: `@capacitor/preferences` 기반 (주석으로 준비됨)
-  - Axios 인터셉터로 모든 요청에 `X-Device-Id` 헤더 자동 첨부
-- **백엔드**: `getDeviceId(req)` 헬퍼로 헤더에서 추출. device_id 없는 요청은 400 반환
-  - 개인 데이터 테이블: `holding_stocks`, `watchlist`, `alerts`
-  - 공용 데이터 테이블: `stocks`, `stock_history`, `stock_analysis`, `recommended_stocks`, `investor_history`
-- **보안 (구현 완료)**:
-  - CORS 화이트리스트: `localhost:5173/4173/3000` + Capacitor origins만 허용
-  - Rate limiting: device_id 기준 120req/min (`express-rate-limit`)
-- **보안 (예정)**: device_id HMAC 서명 (서버 시크릿 기반, 위변조 탐지)
+- **프론트**: `DeviceIdStorage` 인터페이스 (Web: `localStorage`, Capacitor: 주석 준비)
+- **백엔드**: `getDeviceId(req)` 헬퍼. device_id 없는 요청은 400 반환
+- **보안**: CORS 화이트리스트 + Rate limiting 120req/min per device_id
 
 ### 백엔드 원칙
 - 도메인별 파일 분리 완료 (`db/`, `helpers/`, `scrapers/`, `domains/`, `scheduler.js`)
-- `server.js`에는 라우트 + `getStockData` + `syncAllStocks`만 잔존 (~1,230줄)
-- better-sqlite3 동기 API 사용 (트랜잭션 활용). PostgreSQL 전환 시 비동기 패턴으로 교체
-- 네이버 스크래핑은 보조 용도에만 사용. EUC-KR 인코딩 처리는 단일 함수에 집중
-- 캐시 TTL 10분, 배치 처리 5개씩
+- `server.js`에는 라우트 핸들러만 잔존 (~900줄)
+- better-sqlite3 동기 API. 캐시 TTL 10분, 배치 처리 5개씩
 - 알림 쿨다운: `sell_signal` 48h / `sma5_break`·`sma5_touch`·`undervalued` 24h / `target_near` 12h
 
-### 데이터 흐름
-1. 서버 시작 5초 후 `syncAllStocks()` → 전체 종목 가격/지표 갱신 (지연 실행으로 startup 블로킹 방지)
-2. 매일 오전 8시 자동 동기화 스케줄
-3. 프론트에서 종목 상세 조회 시 캐시 우선, 만료 시 실시간 데이터 수집
-4. 분석 결과는 두 가지 opinion으로 명확히 분리하여 저장/반환:
-   - `market_opinion`: 모든 종목에 대해 10점 스코어링 계산 → `stock_analysis.opinion` 컬럼에 저장 (공용)
-   - `holding_opinion`: 평단가 기반 5단계 판단 → `calculateHoldingOpinion()` 함수로 API 응답 시 런타임 계산 (개인화, DB 미저장)
-
-### Opinion 분리 원칙 (중요)
+### Opinion 분리 원칙
 - `stock_analysis.opinion` 컬럼은 `market_opinion` 전용 (비보유 기준, 공용)
-- 보유 종목 조회 API(`GET /api/holdings`, `POST /api/holdings`)는 `holding_opinion` 필드를 별도로 계산하여 반환
-- 프론트에서 두 opinion을 혼용하지 않도록 타입 레벨에서 강제:
+- 보유 종목 API(`GET/POST/PUT /api/holdings`)는 `holding_opinion`을 런타임 계산하여 반환
+- 프론트에서 두 opinion을 혼용하지 않도록 타입으로 강제:
   ```typescript
   type MarketOpinion  = '긍정적' | '중립적' | '부정적';
   type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
@@ -151,92 +129,72 @@ npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
 ## 분석 알고리즘 요약 (10점 만점 통합 스코어링)
 
 ### 보유 종목 (HoldingOpinion - 런타임 계산)
-`calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20)` — 5단계 우선순위 판단:
-1. 손절: 현재가 ≤ 평단가 × 0.93 (-7%) → **매도**
-2. 이중 이탈: 가격 < SMA5 AND 가격 < SMA20 → **매도**
-3. 단기 이탈 + 중기 지지: 가격 < SMA5 AND 가격 ≥ SMA20 → **관망**
-4. 5일선 근접(100~101%): 가격 ≈ SMA5 → **추가매수**
-5. 정배열 유지: 가격 > SMA5 AND SMA5 > SMA20 → **보유**
+`calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20)`:
+1. 손절: 현재가 ≤ 평단가 × 0.93 (-7%) → **매도** (SMA 불필요)
+2. SMA5 데이터 없음 → **보유** (판단 불가)
+3. 이중 이탈: 가격 < SMA5 AND 가격 < SMA20 → **매도**
+4. 단기 이탈 + 중기 지지: 가격 < SMA5 AND 가격 ≥ SMA20 → **관망**
+5. SMA20 없으면: 가격 < SMA5 → **관망**, SMA5 근접 → **추가매수**, 그 외 → **보유**
+6. 5일선 근접(100~101%) → **추가매수**
+7. 정배열 유지 → **보유**
 
 ### 비보유 종목 (MarketOpinion - DB 저장)
 밸류에이션(0~3) + 기술지표(0~3) + 수급(0~2) + 추세(0~2) = **10점 만점**
 - 7점 이상: 긍정적 / 4점 이상: 중립적 / 4점 미만: 부정적
 
-**밸류에이션 엣지케이스 처리 (구현 완료)**:
-- PER 음수(적자 기업): PER 스코어 0점 고정 + `per_negative: true` 플래그
-- PEG 분모(EPS 성장률) ≤ 0: PEG 무효 → `(perScore + pbrScore) / 2.0 * 3.0` 재정규화
-- 섹터 내 종목 수 < 5: `low_confidence: true` 플래그
-
-**기술지표 (구현 완료)**:
-- RSI(14): 기본 스코어 + 30~50구간 과매도 회복 보정 `(50-rsi)/20 * 0.3`
-- MACD(12,26,9): 히스토그램 방향/크기 기반
-- 볼린저밴드(20,2): `%B` 정규화 `(80 - percentB) / 80`
-- 거래량: 20일 평균 대비 비율 + 가격 방향 (하락+기타: 0.2)
-
-**수급**: 외국인(최대 1.2) + 기관(최대 0.8) 연속 순매수 일수
-**추세**: SMA5/SMA20 배열 상태 (정배열 2.0 / 5일선 위+역배열 1.0 / 20일선 위+5일선 아래 0.5 / 양선 아래 0.0)
+**밸류에이션**: PER/PBR 섹터 중앙값 비교 + PEG. 적자 기업 0점+플래그. PEG 무효 시 재정규화.
+**기술지표**: RSI(14, 30~50 보정) + MACD + 볼린저밴드(%B/80) + 거래량. 가중합산 × 3.
+**수급**: 외국인/기관 10일 가중 감쇠(decay=0.8). 최대 1.2+0.8=2.0.
+**추세**: SMA5/SMA20 배열 상태 (0~2점).
 
 ---
 
 ## DB 테이블 (8개)
 | 테이블 | PK | device_id | 용도 |
 |--------|-----|-----------|------|
-| stocks | code | - | 종목 기본정보 + 재무지표 + EPS (공용) |
-| holding_stocks | device_id+code | O | 포트폴리오 보유종목 (개인) |
-| stock_history | code+date | - | 일일 OHLCV 히스토리 (공용) |
-| stock_analysis | code | - | market_opinion + 분석 텍스트 (공용) |
-| recommended_stocks | code | - | 추천 종목 + source 구분 (공용) |
-| investor_history | code+date | - | 투자자(외국인/기관) 매매 히스토리 (공용) |
-| alerts | id | O | 알림 (개인) |
-| watchlist | device_id+code | O | 관심종목 (개인) |
-
-> `stock_analysis.opinion`은 `MarketOpinion` 전용. `recommended_stocks.source`는 `'manual'` / `'algorithm'` 구분.
+| stocks | code | - | 종목 기본정보 + 재무지표 + EPS |
+| holding_stocks | device_id+code | O | 포트폴리오 보유종목 |
+| stock_history | code+date | - | 일일 OHLCV 히스토리 |
+| stock_analysis | code | - | market_opinion + 분석 텍스트 |
+| recommended_stocks | code | - | 추천 종목 + source 구분 |
+| investor_history | code+date | - | 투자자 매매 히스토리 |
+| alerts | id | O | 알림 |
+| watchlist | device_id+code | O | 관심종목 |
 
 ---
 
-## API 엔드포인트 요약 (24개)
+## API 엔드포인트 (28개)
 - 종목: GET/POST/DELETE `/api/stocks`, GET `/api/stock/:code`, POST `/api/stock/:code/refresh`
-- 포트폴리오: GET/POST/DELETE `/api/holdings`, GET `/api/holdings/history` (device_id 필터, `holding_opinion` + `market_opinion` 포함 반환)
-- 추천: GET `/api/recommendations` (`source` 필드 포함)
+- 포트폴리오: GET/POST `/api/holdings`, PUT/DELETE `/api/holdings/:code`, GET `/api/holdings/history`
+- 추천: GET `/api/recommendations`
 - 분석: GET `/api/stock/:code/indicators`, `/volatility`, `/financials`, `/news`, `/chart/:timeframe`
-- 스크리너: GET `/api/screener` (PER 필터 시 음수 자동 제외)
-- 섹터: GET `/api/sector/:category/compare`
-- 알림: GET/DELETE `/api/alerts`, GET `/api/alerts/unread-count`, POST `/api/alerts/read` (device_id 필터)
-- 관심종목: GET/POST/DELETE `/api/watchlist` (device_id 필터)
-- 시장: GET `/api/market/indices`
-- 검색: GET `/api/search`
-- 헬스: GET `/api/health`
+- 스크리너: GET `/api/screener`
+- 섹터: GET `/api/sector/:category/compare` (medians 포함)
+- 알림: GET/DELETE `/api/alerts`, GET `/api/alerts/unread-count`, POST `/api/alerts/read`
+- 관심종목: GET/POST/DELETE `/api/watchlist`
+- 기타: GET `/api/market/indices`, GET `/api/search`, GET `/api/health`
 
 ---
 
-## 로드맵 (우선순위 순)
+## 로드맵
 
-### Phase 1 - 구조 안정화 ✅ 완료
-- [x] Opinion 분리: `market_opinion` / `holding_opinion` 타입·컬럼·API 분리
-- [x] `DeviceIdStorage` 인터페이스 추상화 (Web 구현체)
-- [x] 프론트 Zustand 스토어 3개로 분리 (`useNavigationStore`, `usePortfolioStore`, `useAlertStore`)
-- [x] 알림 쿨다운 type별 차별화 (48h/24h/12h)
-- [x] PER 음수 / PEG 무효 엣지케이스 처리
-- [x] RSI 30~50 보정 / 볼린저밴드 %B 정규화 수정
-- [x] CORS 화이트리스트 + Rate limiting per device_id
+### Phase 1 - 구조 안정화 ✅
+- [x] Opinion 분리, DeviceIdStorage, Zustand 3개 스토어, 알림 쿨다운, PER/PEG 엣지케이스, CORS+Rate limit
 
-### Phase 2 - 인프라 전환 (진행 중)
-- [x] 백엔드 도메인 분리: `db/`, `scrapers/`, `helpers/`, `domains/analysis/`, `domains/alert/`, `domains/stock/data.js`, `scheduler.js` 완료
-- [ ] 잔존 라우트 분리: `getStockData` → `domains/stock/service.js`, 라우트 → `domains/*/router.js`
-- [ ] HTTPS + device_id HMAC 서명 (보안 강화)
-- [ ] SQLite → PostgreSQL 전환 (다수 사용자 대비, 비동기 pg 패턴)
-- [ ] 공식 데이터 API 이관 (KIS Open API / KRX) — 스크래핑 의존도 최소화
+### Phase 2 - 인프라 전환 ✅ (진행 중)
+- [x] 백엔드 도메인 분리: `db/`, `scrapers/`, `helpers/`, `domains/`, `scheduler.js`
+- [x] `getStockData` + `syncAllStocks` → `domains/stock/service.js` 추출
+- [x] PUT /api/holdings/:code 부분 업데이트 엔드포인트
+- [x] 수급 스코어 가중 감쇠 알고리즘
+- [ ] HTTPS + device_id HMAC 서명
+- [ ] SQLite → PostgreSQL 전환
+- [ ] 공식 데이터 API 이관 (KIS Open API / KRX)
 
 ### Phase 3 - 앱 배포
-- [ ] Capacitor 설정 + `@capacitor/preferences`로 device_id 저장 교체
-- [ ] 오프라인 캐시 (마지막 조회 데이터 로컬 저장, 네트워크 없어도 포트폴리오 조회 가능)
-- [ ] FCM/APNs Push Notification 연동 (현재 배치 기반 알림 대체)
-- [ ] App Store / Play Store 배포
+- [ ] Capacitor 설정 + 오프라인 캐시 + Push Notification + 스토어 배포
 
 ### Phase 4 - 품질 향상
-- [ ] 백테스팅 모듈: `stock_history` 기반 과거 시점 스코어 재계산 → 실제 수익률 비교
-- [ ] 스코어 임계값(7점/4점) 데이터 기반 최적화
-- [ ] 수급 스코어에 순매수 금액 가중치 추가
+- [ ] 백테스팅 모듈 + 스코어 임계값 최적화 + 수급 금액 가중치
 
 ---
 

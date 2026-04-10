@@ -157,7 +157,6 @@ const insertRec = db.prepare(`
     VALUES (?, ?, ?, ?, 'manual')
     ON CONFLICT(code) DO UPDATE SET
         reason = excluded.reason,
-        fair_price = excluded.fair_price,
         score = excluded.score,
         source = COALESCE(recommended_stocks.source, excluded.source)
 `);

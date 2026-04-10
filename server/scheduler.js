@@ -1,22 +1,12 @@
-// Scheduler: syncAllStocks delayed startup + daily 8AM
-// This module is imported by server.js after getStockData is defined
+// Scheduler: syncAllStocks delayed startup + daily 8AM + cleanup
+import { syncAllStocks, scheduleDaily8AM } from './domains/stock/service.js';
 
-export function setupScheduler(syncAllStocks) {
+export function setupScheduler() {
     // Delay initial sync by 5 seconds to avoid blocking server startup
     setTimeout(() => syncAllStocks(), 5000);
 
     // Schedule daily 8AM sync
-    const now = new Date();
-    const next8AM = new Date(now);
-    next8AM.setHours(8, 0, 0, 0);
-    if (now >= next8AM) next8AM.setDate(next8AM.getDate() + 1);
-    const msUntil8AM = next8AM.getTime() - now.getTime();
-    console.log(`Next data sync scheduled at ${next8AM.toLocaleString('ko-KR')} (in ${Math.round(msUntil8AM / 60000)}min)`);
-
-    setTimeout(() => {
-        syncAllStocks();
-        setInterval(syncAllStocks, 24 * 60 * 60 * 1000);
-    }, msUntil8AM);
+    scheduleDaily8AM();
 }
 
 // Cleanup function for data older than 20 days

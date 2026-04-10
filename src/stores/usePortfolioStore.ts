@@ -64,9 +64,7 @@ export const usePortfolioStore = create<PortfolioState & PortfolioActions>((set,
     try {
       await stockApi.updateHolding({
         code: stock.code,
-        name: stock.name,
         avgPrice: stock.avgPrice,
-        weight: 0,
         quantity: stock.quantity || 0,
       });
       await get().fetchHoldings();
