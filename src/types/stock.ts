@@ -45,7 +45,6 @@ export interface Recommendation {
   probability?: number;
   analysis?: string;
   advice?: string;
-  opinion?: string;
   market_opinion?: MarketOpinion;
   source?: 'manual' | 'algorithm';
   tossUrl?: string;

@@ -131,9 +131,16 @@ interface AlertActions {
 - **스토어**: `useNavigationStore`, `usePortfolioStore`
 - **기능**: 보유종목 추가/수정/삭제 전체 관리, 요약 통계 (종목수, 투자금, 평가액, 수익률), StockSearchInput으로 종목 검색 후 추가, 인라인 편집 (평단가/수량/비중), 삭제 확인 다이얼로그, 토스트 알림
 - **표시**:
-  - `holding_opinion` 뱃지 + 이유 텍스트 (매도: 평단가 대비 %, 관망: 20일선 지지, 추가매수: 5일선 근접, 보유: 정배열)
+  - `holding_opinion` 뱃지 + 구체적 이유 텍스트:
+    - 매도(손절): "평단가 대비 -8.2% 손실. 손절 기준(-7%) 초과"
+    - 매도(이탈): "5일선·20일선 모두 이탈. 하락세가 강해요"
+    - 관망: "5일선 아래지만 20일선이 지지 중. 조금 기다려봐요"
+    - 추가매수: "5일선 근처에서 지지받고 있어요"
+    - 보유: "5일선 위, 이평선 정배열. 상승 흐름 유지 중"
   - `market_opinion` 뱃지 (시장: 긍정적/중립적/부정적)
-  - 수익률 옆 상황별 격려 메시지 (≥10%: "잘 하고 계세요!", <-7%: "손절 기준에 근접했어요")
+  - 수익률 6구간 메시지 (색상별 구분):
+    ≥20% "목표 수익 달성! 익절 고려" / ≥10% "잘 하고 계세요!" / ≥0% "소폭 수익 중" /
+    ≥-3% "소폭 손실, 여유를" / ≥-7% "손절 기준 근접" / <-7% "손절 기준 도달"
 - **컴포넌트 의존**: `StockSearchInput`
 
 ### RecommendationsPage (유망 종목 추천)
@@ -233,6 +240,7 @@ interface AlertActions {
 | searchStocks(query) | GET | /search?q= |
 | getHoldings() | GET | /holdings (`holding_opinion` 포함) |
 | addHolding(stock) | POST | /holdings |
+| updateHolding(stock) | PUT | /holdings/{code} |
 | deleteHolding(code) | DELETE | /holdings/{code} |
 | getHoldingsHistory() | GET | /holdings/history |
 | getRecommendations() | GET | /recommendations (`source` 포함) |
@@ -273,7 +281,7 @@ type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
 |-----------|------|----------|
 | Stock | 종목 기본 | code, name, category, price, change, per, pbr, roe, target_price, **market_opinion** |
 | Holding | 보유종목 | code, name, value(비중), avgPrice, currentPrice, quantity, **holding_opinion**, **market_opinion** |
-| Recommendation | 추천종목 | code, name, category, reason, score, fairPrice, currentPrice, 재무지표, analysis, advice, **source** |
+| Recommendation | 추천종목 | code, name, category, reason, score, fairPrice, currentPrice, 재무지표, analysis, advice, **market_opinion**, **source** |
 | ScoringBreakdown | 스코어링 상세 | valuation, technical, supplyDemand, trend, total, detail, **per_negative?**, **low_confidence?** |
 | StockDetail | 종목 상세 | Stock + history[], investorData[], analysis, tossUrl, chartPath, scoringBreakdown? |
 | StockSummary | 종목 요약 | code, name, category, price, **market_opinion**, avgPrice? |
@@ -286,7 +294,7 @@ type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
 | WatchlistItem | 관심종목 | code, name, category, price, **market_opinion**, added_at |
 | NewsItem | 뉴스 | title, url, date, source |
 | FinancialData | 재무제표 | periods[], financials[] |
-| SectorComparison | 섹터비교 | category, averages, stocks[] (perVsAvg, pbrVsAvg, roeVsAvg) |
+| SectorComparison | 섹터비교 | category, averages, **medians**, stocks[] (perVsAvg, pbrVsAvg, roeVsAvg) |
 
 ---
 
@@ -301,7 +309,7 @@ PC/태블릿 (md: 이상):
 모바일 (md: 미만):
   사이드바 숨김 + 하단 탭바 5개
   nav className="fixed bottom-0 md:hidden ..."
-  탭: 대시보드 / 포트폴리오 / 추천 / 관심종목 / 설정
+  탭: 대시보드 / 포트폴리오 / 추천 / 알림(미읽은 뱃지) / 설정
 ```
 
 ### 사이드바 메뉴 순서 (PC)
@@ -314,7 +322,8 @@ PC/태블릿 (md: 이상):
 7. 설정 (`settings`) - Settings
 
 ### 모바일 하단 탭바 (5개)
-대시보드 / 포트폴리오 / 추천 / 관심종목 / 설정
+대시보드 / 포트폴리오 / 추천 / 알림(미읽은 수 뱃지) / 설정
+> 관심종목·스크리너·주요종목은 PC 사이드바에만 노출
 > 스크리너, 주요 종목은 모바일에서 하단 탭에 미포함 (각 페이지 내부 링크로 접근)
 
 ### 헤더 구성
@@ -328,6 +337,18 @@ PC/태블릿 (md: 이상):
 - `useNavigationStore.goBack()` 호출 → `previousTab`으로 복귀
 - 보유종목에서 진입 → 뒤로가기 시 analysis 탭
 - 그 외 → 이전 탭으로 복귀
+
+---
+
+## 투자 면책 고지 (3곳)
+1. **첫 실행 모달** — `localStorage('disclaimer_accepted')` 1회. 원금 손실 위험 강조
+2. **추천 페이지 상단** — "아래 종목들은 알고리즘 분석 결과로, 투자를 권유하지 않습니다." 상시 표시
+3. **종목 상세 의견 하단** — "이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다."
+
+## 데이터 표시 원칙
+- **갱신 시각**: 대시보드("N분 전"), 종목 상세("N분/시간/일 전 업데이트") — `last_updated` 기반
+- **재무지표 비교 기준**: 업종 **중앙값**(medians) 기준. 스코어링 알고리즘과 동일 기준 사용
+- **스코어링 해석**: 영역 점수 기반 4단계 텍스트 (≥2.5 매우 좋음 / ≥1.5 적정 / ≥0.5 약함 / 그 외 부정적)
 
 ---
 

@@ -4,41 +4,45 @@ interface ScoringBreakdownPanelProps {
   breakdown: ScoringBreakdown;
 }
 
-const CATEGORY_LABELS: { key: string; label: string; max: number; descFn: (detail: ScoringBreakdown['detail']) => string }[] = [
+const CATEGORY_LABELS: { key: string; label: string; max: number; descFn: (score: number, detail: ScoringBreakdown['detail']) => string }[] = [
   {
     key: 'valuation', label: '밸류에이션', max: 3,
-    descFn: (d) => {
-      if (!d?.valuation) return '데이터 부족';
-      if (d.valuation.perScore >= 0.7) return '업종 평균보다 저렴해요';
-      if (d.valuation.perScore >= 0.4) return '업종 평균 수준이에요';
-      return '업종 대비 비싼 편이에요';
+    descFn: (score) => {
+      if (score >= 2.5) return '업종 대비 매우 저렴한 편이에요';
+      if (score >= 1.5) return '업종 대비 적정 수준이에요';
+      if (score >= 0.5) return '업종 대비 다소 비싼 편이에요';
+      return '업종 대비 많이 비싼 편이에요';
     }
   },
   {
     key: 'technical', label: '기술지표', max: 3,
-    descFn: (d) => {
-      if (!d?.technical) return '데이터 부족';
-      if (d.technical.rsiScore >= 0.6) return 'RSI가 매수 구간이에요';
-      if (d.technical.macdScore >= 0.6) return 'MACD가 상승 신호예요';
-      return '뚜렷한 기술적 신호가 없어요';
+    descFn: (score) => {
+      if (score >= 2.5) return '매수 신호가 강하게 나타나고 있어요';
+      if (score >= 1.5) return '보통 수준의 기술적 신호예요';
+      if (score >= 0.5) return '약한 기술적 신호예요';
+      return '매도 신호가 나타나고 있어요';
     }
   },
   {
     key: 'supplyDemand', label: '수급', max: 2,
-    descFn: (d) => {
+    descFn: (score, d) => {
       if (!d?.supplyDemand) return '데이터 부족';
       const fc = d.supplyDemand.foreignConsecutive || 0;
       const ic = d.supplyDemand.instConsecutive || 0;
-      if (fc >= 3 && ic >= 3) return `외국인 ${fc}일, 기관 ${ic}일 연속 매수`;
-      if (fc >= 3) return `외국인이 ${fc}일 연속 샀어요`;
-      if (ic >= 3) return `기관이 ${ic}일 연속 샀어요`;
-      if (fc >= 1 || ic >= 1) return '소규모 매수세가 있어요';
+      if (score >= 1.5) return `외국인·기관 매수세가 강해요 (외 ${fc}일, 기관 ${ic}일)`;
+      if (score >= 0.8) return `일부 매수세가 있어요 (외 ${fc}일, 기관 ${ic}일)`;
+      if (score > 0) return '소규모 매수세가 있어요';
       return '뚜렷한 수급 신호가 없어요';
     }
   },
   {
     key: 'trend', label: '추세', max: 2,
-    descFn: (d) => d?.trend?.reason || '추세 데이터 부족'
+    descFn: (score, d) => {
+      if (score >= 2.0) return '주가가 이평선 위에서 정배열이에요';
+      if (score >= 1.0) return '5일선 위이지만 완전한 상승세는 아니에요';
+      if (score >= 0.5) return '20일선은 지지하지만 5일선 아래예요';
+      return d?.trend?.reason || '하락 추세예요';
+    }
   },
 ];
 
@@ -79,7 +83,7 @@ const ScoringBreakdownPanel = ({ breakdown }: ScoringBreakdownPanelProps) => {
               <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-1">
                 <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
               </div>
-              <p className="text-xs text-slate-500">{descFn(breakdown.detail)}</p>
+              <p className="text-xs text-slate-500">{descFn(value, breakdown.detail)}</p>
             </div>
           );
         })}

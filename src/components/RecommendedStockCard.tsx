@@ -86,6 +86,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
           상세 분석 →
         </span>
       </div>
+      <p className="text-xs text-slate-600 mt-2 leading-relaxed">투자 참고용이며 투자 권유가 아닙니다.</p>
     </div>
   );
 };

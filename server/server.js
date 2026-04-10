@@ -15,6 +15,7 @@ import { invalidateCache } from './helpers/cache.js';
 import { NAVER_FINANCE_URL } from './scrapers/naver.js';
 import { captureChart } from './scrapers/toss.js';
 import { calculateHoldingOpinion, median } from './domains/analysis/scoring.js';
+import { recalcWeights } from './domains/portfolio/service.js';
 import { calculateIndicators } from './domains/analysis/indicators.js';
 import { setupScheduler, setupCleanup } from './scheduler.js';
 import { getStockData, syncAllStocks } from './domains/stock/service.js';
@@ -141,23 +142,7 @@ app.get('/api/holdings', async (req, res) => {
     }
 });
 
-// Recalculate weight for all holdings of a device based on investment cost
-function recalcWeights(deviceId) {
-    const holdings = db.prepare(
-        'SELECT code, avg_price, quantity FROM holding_stocks WHERE device_id = ?'
-    ).all(deviceId);
-    const totalCost = holdings.reduce((sum, h) => sum + (h.avg_price || 0) * (h.quantity || 0), 0);
-    if (totalCost <= 0) return;
-    const updateStmt = db.prepare('UPDATE holding_stocks SET weight = ? WHERE device_id = ? AND code = ?');
-    const txn = db.transaction(() => {
-        for (const h of holdings) {
-            const cost = (h.avg_price || 0) * (h.quantity || 0);
-            const weight = Math.round(cost / totalCost * 100);
-            updateStmt.run(weight, deviceId, h.code);
-        }
-    });
-    txn();
-}
+// recalcWeights → domains/portfolio/service.js
 
 app.post('/api/holdings', async (req, res) => {
     const deviceId = requireDeviceId(req, res);

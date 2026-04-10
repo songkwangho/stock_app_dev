@@ -75,6 +75,14 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      {holdings.length > 0 && (() => {
+        const dates = holdings.map(h => (h as unknown as { last_updated?: string }).last_updated).filter(Boolean);
+        if (!dates.length) return null;
+        const latest = Math.max(...dates.map(d => new Date(d as string).getTime()));
+        const mins = Math.floor((Date.now() - latest) / 60000);
+        const label = mins < 1 ? '방금' : mins < 60 ? `${mins}분 전` : mins < 1440 ? `${Math.floor(mins / 60)}시간 전` : `${Math.floor(mins / 1440)}일 전`;
+        return <p className="text-xs text-slate-600">마지막 업데이트: {label}</p>;
+      })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <StatCard
           title="총 자산"

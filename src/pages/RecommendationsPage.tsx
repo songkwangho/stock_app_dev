@@ -48,7 +48,8 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold mb-2">오늘의 유망 종목</h2>
-          <p className="text-slate-500 text-sm">시장 데이터를 분석해 상승 여력이 있는 종목을 추천해요.</p>
+          <p className="text-slate-500 text-sm">시장 데이터를 분석해 상승 여력이 있는 종목을 선별했어요.</p>
+          <p className="text-xs text-yellow-500/80 mt-1">아래 종목들은 알고리즘 분석 결과로, 투자를 권유하지 않습니다.</p>
         </div>
         <button
           onClick={() => {

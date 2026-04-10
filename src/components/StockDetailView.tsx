@@ -203,7 +203,22 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               )}
             </div>
             <h2 className="text-4xl font-bold">{stockDetail?.name || stock.name}</h2>
-            <p className="text-slate-500 font-mono mt-1">{stock.code}</p>
+            <div className="flex items-center space-x-2 mt-1">
+              <p className="text-slate-500 font-mono">{stock.code}</p>
+              {(stockDetail as unknown as { last_updated?: string })?.last_updated && (
+                <span className="text-xs text-slate-600">
+                  {(() => {
+                    const diff = Date.now() - new Date((stockDetail as unknown as { last_updated: string }).last_updated).getTime();
+                    const mins = Math.floor(diff / 60000);
+                    if (mins < 1) return '���금 업데이트';
+                    if (mins < 60) return `${mins}분 전 업데이트`;
+                    const hours = Math.floor(mins / 60);
+                    if (hours < 24) return `${hours}시간 전 업데이트`;
+                    return `${Math.floor(hours / 24)}일 전 업데이트`;
+                  })()}
+                </span>
+              )}
+            </div>
           </div>
           <div className="text-right">
             <p className="text-sm text-slate-500 mb-1">현재가</p>
@@ -576,21 +591,21 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">같은 업종 비교</h3>
                 <p className="text-xs text-slate-500 mb-4">
-                  <span className="text-blue-400 font-bold">{sectorData.category}</span> 업종 평균과 비교해요.
-                  업종 평균보다 PER이 낮고 ROE가 높으면 좋아요!
+                  <span className="text-blue-400 font-bold">{sectorData.category}</span> 업종 중앙값과 비교해요.
+                  PER이 중앙값보다 낮고 ROE가 높으면 좋아요!
                 </p>
                 <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50">
                   <div className="text-center">
-                    <p className="text-xs text-slate-500 mb-1">업종 평균 PER</p>
-                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.per}배</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 중앙값 PER</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.medians.per}배</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-xs text-slate-500 mb-1">업종 평균 PBR</p>
-                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.pbr}배</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 중앙값 PBR</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.medians.pbr}배</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-xs text-slate-500 mb-1">업종 평균 ROE</p>
-                    <p className="text-sm font-bold text-blue-400">{sectorData.averages.roe}%</p>
+                    <p className="text-xs text-slate-500 mb-1">업종 중앙값 ROE</p>
+                    <p className="text-sm font-bold text-blue-400">{sectorData.medians.roe}%</p>
                   </div>
                 </div>
                 <div className="overflow-x-auto max-h-64 overflow-y-auto">
@@ -725,6 +740,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                     </p>
                   </div>
                 </div>
+
+                <p className="text-xs text-slate-600 mt-4 pt-3 border-t border-slate-800/50 leading-relaxed">
+                  이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다. 모든 투자에는 원금 손실 위험이 있습니다.
+                </p>
 
                 {stockDetail?.tossUrl && (
                   <div className="mt-6 pt-6 border-t border-slate-800">

@@ -36,6 +36,7 @@ const App = () => {
   const [searchResults, setSearchResults] = useState<StockSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [nickname, setNickname] = useState(() => localStorage.getItem('nickname') || '');
+  const [showDisclaimer, setShowDisclaimer] = useState(() => !localStorage.getItem('disclaimer_accepted'));
 
   const handleNicknameChange = (name: string) => {
     setNickname(name);
@@ -302,22 +303,50 @@ const App = () => {
             { tab: 'dashboard', icon: <LayoutDashboard size={20} />, label: '대시보드' },
             { tab: 'analysis', icon: <TrendingUp size={20} />, label: '포트폴리오' },
             { tab: 'recommendations', icon: <Star size={20} />, label: '추천' },
-            { tab: 'watchlist', icon: <Eye size={20} />, label: '관심종목' },
+            { tab: 'alerts-page', icon: <Bell size={20} />, label: '알림', badge: unreadCount },
             { tab: 'settings', icon: <Settings size={20} />, label: '설정' },
-          ].map(({ tab, icon, label }) => (
+          ].map(({ tab, icon, label, badge }) => (
             <button
               key={tab}
-              onClick={() => navigateTo(tab)}
-              className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 transition-colors ${
-                activeTab === tab ? 'text-blue-400' : 'text-slate-500'
+              onClick={() => {
+                if (tab === 'alerts-page') { handleToggleAlerts(); }
+                else { navigateTo(tab); }
+              }}
+              className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 transition-colors relative ${
+                activeTab === tab || (tab === 'alerts-page' && showAlerts) ? 'text-blue-400' : 'text-slate-500'
               }`}
             >
               {icon}
+              {badge !== undefined && badge > 0 && (
+                <span className="absolute top-1 right-1/4 min-w-[16px] h-[16px] bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center px-0.5">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
               <span className="text-xs font-bold">{label}</span>
             </button>
           ))}
         </div>
       </nav>
+
+      {/* Investment Disclaimer Modal (1회) */}
+      {showDisclaimer && (
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4">
+            <h2 className="text-lg font-bold text-white">투자 유의사항</h2>
+            <div className="text-sm text-slate-400 leading-relaxed space-y-2">
+              <p>이 앱의 분석과 추천은 <strong className="text-white">투자 참고용 정보이며, 투자 결정의 책임은 본인에게 있습니다.</strong></p>
+              <p>모든 투자에는 <strong className="text-red-400">원금 손실 위험</strong>이 있으며, 과거 데이터 기반 분석이 미래 수익을 보장하지 않습니다.</p>
+              <p>종목 추천 점수와 의견은 알고리즘 자동 산출 결과이며, 전문 투자 조언이 아닙니다.</p>
+            </div>
+            <button
+              onClick={() => { localStorage.setItem('disclaimer_accepted', '1'); setShowDisclaimer(false); }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors"
+            >
+              확인했습니다
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Global Toast */}
       <ToastContainer />

@@ -231,11 +231,19 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                   <p className={`text-xl font-black ${parseFloat(profitRate) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                     {parseFloat(profitRate) >= 0 ? '+' : ''}{profitRate}%
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {parseFloat(profitRate) >= 10 ? '잘 하고 계세요!' :
-                     parseFloat(profitRate) >= 0 ? '조금씩 오르고 있어요' :
-                     parseFloat(profitRate) > -7 ? '조금 기다려볼까요?' :
-                     '손절 기준에 근접했어요'}
+                  <p className={`text-xs mt-0.5 ${
+                    parseFloat(profitRate) >= 10 ? 'text-emerald-400' :
+                    parseFloat(profitRate) >= 0 ? 'text-blue-400' :
+                    parseFloat(profitRate) >= -3 ? 'text-slate-400' :
+                    parseFloat(profitRate) >= -7 ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 일부 익절도 고려해 보���요' :
+                     parseFloat(profitRate) >= 10 ? '잘 하고 계세요! 추세를 유지해 보세요' :
+                     parseFloat(profitRate) >= 0 ? '소폭 수익 중이에요. 지켜보세요' :
+                     parseFloat(profitRate) >= -3 ? '소��� 손실이에요. 장기적으로 여유를 가져보세요' :
+                     parseFloat(profitRate) >= -7 ? '손실이 커지고 있어요. 손절 기준(-7%)에 근접했어요' :
+                     '손절 기준에 도달했어요. 추가 손실 전 결정이 필요해요'}
                   </p>
                 </div>
               </div>
@@ -253,10 +261,12 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                       {stock.holding_opinion}
                       <span className="font-normal text-slate-500 ml-1">
                         {stock.holding_opinion === '매도' && stock.avgPrice && stock.currentPrice
-                          ? `(평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}%)`
-                          : stock.holding_opinion === '관망' ? '(20일선 지지 확인 중)'
-                          : stock.holding_opinion === '추가매수' ? '(5일선 근접 지지)'
-                          : '(정배열 유지)'}
+                          ? ((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100) <= -7
+                            ? `평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}% 손실. 손절 기준(-7%) 초과`
+                            : '5일선·20일선 모두 이탈. 하락세가 강해요'
+                          : stock.holding_opinion === '관망' ? '5일선 아래지만 20일선이 지지 중. 조금 기다려봐요'
+                          : stock.holding_opinion === '추가매수' ? '5일선 근처에서 지지받고 있어요'
+                          : '5일선 위, 이평선 정배열. 상승 흐름 유지 중'}
                       </span>
                     </div>
                   )}

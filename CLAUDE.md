@@ -6,7 +6,6 @@
 로그인 없이 기기별 익명 식별자(device_id)로 개인 데이터를 분리하여 관리한다.
 
 > **배포 전략**: React(Vite) → Capacitor 래핑 → App Store/Play Store
-> Recharts, Tailwind CSS 등 웹 기반 스택을 그대로 유지하면서 네이티브 앱 배포가 가능하다.
 
 ---
 
@@ -14,10 +13,7 @@
 - **프론트엔드**: React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + Recharts v3.7 + Zustand v5
 - **모바일 래핑**: Capacitor (iOS/Android 배포 시)
 - **백엔드**: Node.js + Express + SQLite3 (better-sqlite3) + express-rate-limit → PostgreSQL 전환 예정
-- **데이터 소스 (우선순위)**:
-  1. 공식 API: 한국투자증권 Open API(KIS), KRX 정보데이터시스템 (핵심 가격/재무 데이터)
-  2. 보조 스크래핑: 네이버 증권 (뉴스, 재무제표 세부 등 공식 API 미제공 항목만)
-  3. 캡처: 토스증권 Puppeteer (차트 이미지, 추후 자체 차트로 대체 예정)
+- **데이터 소스**: 네이버 증권 (보조 스크래핑) + 토스증권 Puppeteer (차트 캡처) → KIS/KRX 공식 API 전환 예정
 
 ---
 
@@ -25,48 +21,46 @@
 ```
 stock_app_dev/
 ├── server/
-│   ├── server.js             # Express 라우트 28개 + recalcWeights (~900줄)
+│   ├── server.js             # Express 라우트 28개 (~880줄)
 │   ├── index.js              # 진입점 래퍼
 │   ├── db/
-│   │   ├── connection.js     # DB 연결 (better-sqlite3)
-│   │   ├── schema.js         # 8개 테이블 CREATE + 인덱스
-│   │   └── migrate.js        # 11개 마이그레이션 블록
+│   │   ├── connection.js     # DB 연결
+│   │   ├── schema.js         # 8개 테이블 + 인덱스
+│   │   └── migrate.js        # 11개 마이그레이션
 │   ├── helpers/
 │   │   ├── cache.js          # getCached/setCache/invalidateCache
 │   │   └── deviceId.js       # getDeviceId/requireDeviceId
 │   ├── scrapers/
-│   │   ├── naver.js          # 네이버 증권 스크래핑 (EUC-KR 단일화)
-│   │   └── toss.js           # 토스증권 Puppeteer 차트 캡처
+│   │   ├── naver.js          # 네이버 증권 스크래핑 (EUC-KR)
+│   │   └── toss.js           # 토스증권 Puppeteer 캡처
 │   ├── domains/
 │   │   ├── analysis/
-│   │   │   ├── scoring.js    # 5개 스코어링 함수 + calculateHoldingOpinion + median
+│   │   │   ├── scoring.js    # 스코어링 함수 + calculateHoldingOpinion + median
 │   │   │   └── indicators.js # calculateIndicators (RSI/MACD/볼린저)
 │   │   ├── alert/
 │   │   │   └── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   │   ├── portfolio/
+│   │   │   └── service.js    # recalcWeights
 │   │   └── stock/
 │   │       ├── service.js    # getStockData + syncAllStocks + scheduleDaily8AM
 │   │       └── data.js       # topStocks (97개) + initialRecommendations (20개)
 │   └── scheduler.js          # setupScheduler + setupCleanup
-├── stocks.db                 # SQLite 데이터베이스 (개발 환경)
-├── public/charts/            # 토스증권 차트 캡처 이미지
 ├── src/
-│   ├── App.tsx               # 메인 레이아웃 + 반응형 네비게이션
+│   ├── App.tsx               # 반응형 레이아웃 + 투자 면책 모달
 │   ├── api/stockApi.ts       # Axios API 클라이언트
-│   ├── storage/
-│   │   └── deviceId.ts       # DeviceIdStorage 인터페이스 + Web 구현체
+│   ├── storage/deviceId.ts   # DeviceIdStorage 인터페이스 + Web 구현체
 │   ├── stores/
-│   │   ├── useNavigationStore.ts  # activeTab, selectedStock (UI 상태)
-│   │   ├── usePortfolioStore.ts   # holdings, isLoading, error (포트폴리오)
+│   │   ├── useNavigationStore.ts  # activeTab, selectedStock
+│   │   ├── usePortfolioStore.ts   # holdings, isLoading, error
 │   │   ├── useAlertStore.ts       # alerts, unreadCount
-│   │   ├── useToastStore.ts       # toasts (글로벌 토스트 알림)
-│   │   └── useStockStore.ts       # 레거시 re-export (3개 스토어 호환)
-│   ├── types/stock.ts        # TypeScript 인터페이스 (MarketOpinion/HoldingOpinion)
-│   ├── pages/                # 페이지 컴포넌트 (7개, lazy loading)
-│   └── components/           # 공용 컴포넌트 (6개, ScoringBreakdownPanel 포함)
+│   │   └── useToastStore.ts       # toasts
+│   ├── types/stock.ts        # MarketOpinion / HoldingOpinion 타입
+│   ├── pages/                # 7개 페이지 (lazy loading)
+│   └── components/           # 6개 (ScoringBreakdownPanel 포함)
 ├── docs/
-│   ├── AI.md                 # AI 활용 내역
-│   ├── BACKEND.md            # 백엔드 상세 문서
-│   └── FRONTEND.md           # 프론트엔드 상세 문서
+│   ├── BACKEND.md            # 백엔드 상세
+│   ├── FRONTEND.md           # 프론트엔드 상세
+│   └── AI.md                 # AI 활용 내역
 └── package.json
 ```
 
@@ -74,131 +68,113 @@ stock_app_dev/
 
 ## 개발 명령어
 ```bash
-npm run dev              # Vite 프론트엔드 dev server (포트 5173)
+npm run dev              # Vite 프론트엔드 (포트 5173)
 node server/server.js    # Express 백엔드 (포트 3001)
 npm run build            # TypeScript 체크 + 프로덕션 빌드
-npm run lint             # ESLint 검사
-npx cap sync             # Capacitor 앱 동기화 (앱 빌드 시)
 ```
 
 ---
 
 ## 핵심 규칙
 
-### 코드 작성 원칙
-- 한국어 UI 텍스트, 영어 코드/변수명
-- Tailwind CSS 다크 테마 (slate 계열 배경, blue 액센트)
-- 모든 페이지는 lazy loading (React.lazy + Suspense)
-- API 통신은 `stockApi.ts`를 통해서만 수행
-- 상태관리는 도메인별 Zustand 스토어를 통해서만 수행
-  - UI 네비게이션: `useNavigationStore`
-  - 포트폴리오: `usePortfolioStore`
-  - 알림: `useAlertStore`
-- **반응형 레이아웃**: PC 사이드바(`hidden md:flex`) + 모바일 하단 탭바(`fixed bottom-0 md:hidden`)
-- **초보자 UX 원칙**:
-  - PER/PBR/ROE 등 재무지표에 항상 한국어 컨텍스트 설명 병기
-  - `ScoringBreakdownPanel`로 10점 스코어를 게이지 바 + 한국어 해석으로 시각화
-  - 차트는 기본 라인 차트, 토글로 캔들 차트 전환 가능
-  - 알림 메시지에 아이콘 + 우선순위 강조, 수익률에 상황별 격려 메시지
-  - `holding_opinion` 뱃지에 이유(평단가 대비 %, 이평선 상태) 표시
-  - 추천 카드에 `source` 뱃지 + 신뢰도 설명 + fairPrice 출처 라벨
+### 코드 작성
+- 한국어 UI 텍스트, 영어 코드/변수명. Tailwind 다크 테마 (slate + blue)
+- 모든 페이지 lazy loading. API는 `stockApi.ts` 통해서만. 상태는 도메인별 Zustand 스토어
+- **반응형**: PC 사이드바(`hidden md:flex`) + 모바일 하단 탭바 5개(`fixed bottom-0 md:hidden`)
+  - 모바일 탭: 대시보드 / 포트폴리오 / 추천 / 알림(미읽은 뱃지) / 설정
+  - 관심종목·스크리너·주요종목은 PC 사이드바에만 노출
+- **초보자 UX**:
+  - 재무지표 업종 **중앙값** 기준 비교 (스코어링과 동일 기준)
+  - 스코어 게이지 시각화 (영역별 점수 기반 한국어 해석)
+  - 차트 라인/캔들 토글, 알림 아이콘+우선순위, 데이터 갱신 시각("N분 전")
+  - holding_opinion 구체적 이유 (손절%/이평선 상태)
+  - 수익률 6구간 메시지 (목표수익달성~손절도달)
+  - 추천 source 신뢰도 설명 + fairPrice 출처
+  - 투자 면책 고지 3곳 (첫 실행 모달 / 추천 페이지 상단 / 종목 상세 하단)
 
-### 사용자 식별 (device_id 방식)
-- 로그인 없음. 기기 기반 익명 식별자로 개인 데이터 분리
-- **프론트**: `DeviceIdStorage` 인터페이스 (Web: `localStorage`, Capacitor: 주석 준비)
-- **백엔드**: `getDeviceId(req)` 헬퍼. device_id 없는 요청은 400 반환
-- **보안**: CORS 화이트리스트 + Rate limiting 120req/min per device_id
+### device_id
+- 로그인 없음. `DeviceIdStorage` 인터페이스로 환경별 교체 (Web: localStorage, Capacitor: 준비됨)
+- 백엔드: `requireDeviceId` 미들웨어. 개인 데이터(holdings/watchlist/alerts) 필터링
+- 보안: CORS 화이트리스트 + Rate limiting 120req/min. HMAC 서명 예정
 
-### 백엔드 원칙
-- 도메인별 파일 분리 완료 (`db/`, `helpers/`, `scrapers/`, `domains/`, `scheduler.js`)
-- `server.js`에는 라우트 핸들러만 잔존 (~900줄)
-- better-sqlite3 동기 API. 캐시 TTL 10분, 배치 처리 5개씩
-- 알림 쿨다운: `sell_signal` 48h / `sma5_break`·`sma5_touch`·`undervalued` 24h / `target_near` 12h
-
-### Opinion 분리 원칙
-- `stock_analysis.opinion` 컬럼은 `market_opinion` 전용 (비보유 기준, 공용)
-- 보유 종목 API(`GET/POST/PUT /api/holdings`)는 `holding_opinion`을 런타임 계산하여 반환
-- 프론트에서 두 opinion을 혼용하지 않도록 타입으로 강제:
-  ```typescript
-  type MarketOpinion  = '긍정적' | '중립적' | '부정적';
-  type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
-  ```
+### Opinion 분리
+```typescript
+type MarketOpinion  = '긍정적' | '중립적' | '부정적';  // DB 저장, 공용
+type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';  // 런타임 계산, 개인화
+```
+- `stock_analysis.opinion` = MarketOpinion 전용
+- GET/POST/PUT `/api/holdings` 응답에 `holding_opinion` 런타임 계산 포함
 
 ---
 
-## 분석 알고리즘 요약 (10점 만점 통합 스코어링)
+## 분석 알고리즘
 
-### 보유 종목 (HoldingOpinion - 런타임 계산)
-`calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20)`:
-1. 손절: 현재가 ≤ 평단가 × 0.93 (-7%) → **매도** (SMA 불필요)
-2. SMA5 데이터 없음 → **보유** (판단 불가)
-3. 이중 이탈: 가격 < SMA5 AND 가격 < SMA20 → **매도**
-4. 단기 이탈 + 중기 지지: 가격 < SMA5 AND 가격 ≥ SMA20 → **관망**
-5. SMA20 없으면: 가격 < SMA5 → **관망**, SMA5 근접 → **추가매수**, 그 외 → **보유**
-6. 5일선 근접(100~101%) → **추가매수**
-7. 정배열 유지 → **보유**
+### HoldingOpinion (런타임, `calculateHoldingOpinion`)
+1. 손절(-7%) → 매도 (SMA 불필요)
+2. SMA5 null → 보유 (판단 불가)
+3. 이중 이탈(SMA5+SMA20 아래) → 매도
+4. 단기이탈+중기지지 → 관망
+5. SMA20 null → SMA5만으로 판단 (관망/추가매수/보유)
+6. 5일선 근접(100~101%) → 추가매수
+7. 정배열 → 보유
 
-### 비보유 종목 (MarketOpinion - DB 저장)
-밸류에이션(0~3) + 기술지표(0~3) + 수급(0~2) + 추세(0~2) = **10점 만점**
-- 7점 이상: 긍정적 / 4점 이상: 중립적 / 4점 미만: 부정적
-
-**밸류에이션**: PER/PBR 섹터 중앙값 비교 + PEG. 적자 기업 0점+플래그. PEG 무효 시 재정규화.
-**기술지표**: RSI(14, 30~50 보정) + MACD + 볼린저밴드(%B/80) + 거래량. 가중합산 × 3.
-**수급**: 외국인/기관 10일 가중 감쇠(decay=0.8). 최대 1.2+0.8=2.0.
-**추세**: SMA5/SMA20 배열 상태 (0~2점).
+### MarketOpinion (10점, DB 저장)
+- **밸류에이션**(0~3): PER/PBR 섹터 중앙값 + PEG. 적자→0점+플래그. PEG 무효→재정규화
+- **기술지표**(0~3): RSI(30%, 30~50보정) + MACD(25%) + 볼린저(20%, %B/80) + 거래량(25%)
+- **수급**(0~2): 외국인(max1.2)+기관(max0.8), 10일 가중 감쇠(decay=0.8)
+- **추세**(0~2): SMA5/SMA20 배열 상태
+- 합산 ≥7 긍정적, ≥4 중립적, <4 부정적
 
 ---
 
 ## DB 테이블 (8개)
-| 테이블 | PK | device_id | 용도 |
-|--------|-----|-----------|------|
-| stocks | code | - | 종목 기본정보 + 재무지표 + EPS |
-| holding_stocks | device_id+code | O | 포트폴리오 보유종목 |
-| stock_history | code+date | - | 일일 OHLCV 히스토리 |
-| stock_analysis | code | - | market_opinion + 분석 텍스트 |
-| recommended_stocks | code | - | 추천 종목 + source 구분 |
-| investor_history | code+date | - | 투자자 매매 히스토리 |
-| alerts | id | O | 알림 |
-| watchlist | device_id+code | O | 관심종목 |
+| 테이블 | PK | 용도 |
+|--------|-----|------|
+| stocks | code | 종목 기본정보 + EPS |
+| holding_stocks | device_id+code | 포트폴리오 (개인) |
+| stock_history | code+date | 일일 OHLCV |
+| stock_analysis | code | market_opinion + 분석 텍스트 |
+| recommended_stocks | code | 추천 + source 구분 |
+| investor_history | code+date | 투자자 매매 히스토리 |
+| alerts | id | 알림 (개인) |
+| watchlist | device_id+code | 관심종목 (개인) |
 
----
-
-## API 엔드포인트 (28개)
-- 종목: GET/POST/DELETE `/api/stocks`, GET `/api/stock/:code`, POST `/api/stock/:code/refresh`
-- 포트폴리오: GET/POST `/api/holdings`, PUT/DELETE `/api/holdings/:code`, GET `/api/holdings/history`
-- 추천: GET `/api/recommendations`
-- 분석: GET `/api/stock/:code/indicators`, `/volatility`, `/financials`, `/news`, `/chart/:timeframe`
-- 스크리너: GET `/api/screener`
-- 섹터: GET `/api/sector/:category/compare` (medians 포함)
-- 알림: GET/DELETE `/api/alerts`, GET `/api/alerts/unread-count`, POST `/api/alerts/read`
-- 관심종목: GET/POST/DELETE `/api/watchlist`
-- 기타: GET `/api/market/indices`, GET `/api/search`, GET `/api/health`
+## API (28개)
+종목(6), 포트폴리오(5: GET/POST/PUT/DELETE + history), 추천(1), 분석(6: indicators/volatility/financials/news/chart/screener), 섹터(1: compare+medians), 알림(4), 관심종목(3), 기타(2: indices/health)
 
 ---
 
 ## 로드맵
 
 ### Phase 1 - 구조 안정화 ✅
-- [x] Opinion 분리, DeviceIdStorage, Zustand 3개 스토어, 알림 쿨다운, PER/PEG 엣지케이스, CORS+Rate limit
+Opinion 분리, DeviceIdStorage, Zustand 3개 스토어, 알림 쿨다운, PER/PEG 엣지케이스, CORS+Rate limit
 
-### Phase 2 - 인프라 전환 ✅ (진행 중)
-- [x] 백엔드 도메인 분리: `db/`, `scrapers/`, `helpers/`, `domains/`, `scheduler.js`
-- [x] `getStockData` + `syncAllStocks` → `domains/stock/service.js` 추출
-- [x] PUT /api/holdings/:code 부분 업데이트 엔드포인트
-- [x] 수급 스코어 가중 감쇠 알고리즘
-- [ ] HTTPS + device_id HMAC 서명
-- [ ] SQLite → PostgreSQL 전환
-- [ ] 공식 데이터 API 이관 (KIS Open API / KRX)
+### Phase 2 - 인프라 전환 (진행 중, 우선순위 순)
+- [x] 백엔드 도메인 분리 (db/, scrapers/, helpers/, domains/, scheduler)
+- [x] getStockData+syncAllStocks → domains/stock/service.js
+- [x] recalcWeights → domains/portfolio/service.js
+- [x] PUT /api/holdings/:code, 수급 가중 감쇠, 투자 면책 고지
+1. [ ] server.js 라우트 → domains/*/router.js 분리 — 완료 후 다음 단계로
+2. [ ] device_id HMAC 서명 + 기존 device_id 마이그레이션 전략 수립
+3. [ ] SQLite → PostgreSQL 전환 — 라우트 분리 완료 후 착수
+4. [ ] KIS/KRX 공식 API 이관 — KIS(이용약관 검토) / KRX(전일 데이터 허용 여부) 분리 평가
 
 ### Phase 3 - 앱 배포
-- [ ] Capacitor 설정 + 오프라인 캐시 + Push Notification + 스토어 배포
+- [ ] Capacitor 설정 + `@capacitor/preferences`로 device_id 저장 교체
+- [ ] Push + 배치 알림 단일 파이프라인 설계 (이중 발송 방지)
+- [ ] 오프라인 모드 배너 + 타임스탬프 UI 필수 구현
+- [ ] 앱스토어 심사 문서: 투자 면책 조항 전략 수립
+- [ ] App Store / Play Store 배포
 
 ### Phase 4 - 품질 향상
-- [ ] 백테스팅 모듈 + 스코어 임계값 최적화 + 수급 금액 가중치
+- **선행 조건** (즉시):
+  - [x] stock_history 무기한 보관 정책 확인 (cleanupOldData는 stock_history 미삭제 — 이미 적용됨)
+  - [ ] 장기 데이터 초기 적재 스크립트 준비 (백테스팅용 과거 OHLCV 대량 수집)
+- [ ] 백테스팅 모듈: stock_history 기반 과거 시점 스코어 재계산 → 실제 수익률 비교
+- [ ] 스코어 임계값(7점/4점) 데이터 기반 최적화
+- [ ] 수급 스코어에 순매수 금액 가중치 추가
 
 ---
 
-## 영역별 문서 참조
-- 백엔드 작업 시: `docs/BACKEND.md` 참조
-- 프론트엔드 작업 시: `docs/FRONTEND.md` 참조
-- AI 활용 내역: `docs/AI.md` 참조
+## 문서 참조
+- 백엔드: `docs/BACKEND.md` / 프론트엔드: `docs/FRONTEND.md` / AI: `docs/AI.md`
