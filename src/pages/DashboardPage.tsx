@@ -75,6 +75,23 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      {/* 온보딩: 빈 포트폴리오 시 안내 */}
+      {holdings.length === 0 && (
+        <div className="bg-gradient-to-br from-blue-600/10 to-emerald-600/10 border border-blue-500/20 rounded-3xl p-8 text-center">
+          <h2 className="text-xl font-bold mb-3">주식 분석을 시작해 보세요!</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed max-w-md mx-auto">
+            보유 종목을 추가하면 수익률 추적, 매수/매도 의견, 알림을 받을 수 있어요.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button onClick={() => onNavigate('analysis')} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-colors">
+              종목 추가하기
+            </button>
+            <button onClick={() => onNavigate('recommendations')} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-bold transition-colors">
+              추천 종목 둘러보기
+            </button>
+          </div>
+        </div>
+      )}
       {holdings.length > 0 && (() => {
         const dates = holdings.map(h => (h as unknown as { last_updated?: string }).last_updated).filter(Boolean);
         if (!dates.length) return null;

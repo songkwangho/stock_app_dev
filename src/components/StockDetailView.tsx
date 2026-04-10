@@ -54,7 +54,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
   const [refreshing, setRefreshing] = useState(false);
   const [indicators, setIndicators] = useState<TechnicalIndicators | null>(null);
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
-  const [news, setNews] = useState<NewsItem[]>([]);
+  const [news, setNews] = useState<NewsItem[] | null>(null);
   const [financials, setFinancials] = useState<FinancialData | null>(null);
   const [sectorData, setSectorData] = useState<SectorComparison | null>(null);
   const [chartTimeframe, setChartTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -63,19 +63,19 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const [data, vol, ind, newsData, finData] = await Promise.all([
+        // Phase 1: 핵심 데이터 먼저 (가격 + 차트 + 지표)
+        const [data, vol, ind] = await Promise.all([
           stockApi.getCurrentPrice(stock.code),
           stockApi.getVolatility(stock.code),
           stockApi.getIndicators(stock.code),
-          stockApi.getNews(stock.code).catch(() => []),
-          stockApi.getFinancials(stock.code).catch(() => null),
         ]);
         setStockDetail(data);
         setVolatility(vol.volatility);
         setIndicators(ind);
-        setNews(newsData);
-        setFinancials(finData);
-        // Fetch sector comparison if category available
+
+        // Phase 2: 보조 데이터 지연 로딩 (뉴스 + 재무 + 섹터)
+        stockApi.getNews(stock.code).then(setNews).catch(() => {});
+        stockApi.getFinancials(stock.code).then(setFinancials).catch(() => {});
         const cat = data?.category || stock.category;
         if (cat) {
           stockApi.getSectorComparison(cat).then(setSectorData).catch(() => {});
@@ -208,13 +208,16 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               {(stockDetail as unknown as { last_updated?: string })?.last_updated && (
                 <span className="text-xs text-slate-600">
                   {(() => {
-                    const diff = Date.now() - new Date((stockDetail as unknown as { last_updated: string }).last_updated).getTime();
+                    const updated = new Date((stockDetail as unknown as { last_updated: string }).last_updated);
+                    const diff = Date.now() - updated.getTime();
                     const mins = Math.floor(diff / 60000);
-                    if (mins < 1) return '���금 업데이트';
-                    if (mins < 60) return `${mins}분 전 업데이트`;
-                    const hours = Math.floor(mins / 60);
-                    if (hours < 24) return `${hours}시간 전 업데이트`;
-                    return `${Math.floor(hours / 24)}일 전 업데이트`;
+                    const now = new Date();
+                    const h = now.getHours();
+                    const isMarketOpen = now.getDay() >= 1 && now.getDay() <= 5 && h >= 9 && h < 16;
+                    const timeLabel = updated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    const freshness = mins < 1 ? '방금' : mins < 60 ? `${mins}분 전` : mins < 1440 ? `${Math.floor(mins / 60)}시간 전` : `${Math.floor(mins / 1440)}일 전`;
+                    const context = isMarketOpen ? '장중 데이터' : '전일 종가';
+                    return `${freshness} (${timeLabel}, ${context})`;
                   })()}
                 </span>
               )}
@@ -443,7 +446,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   {stockDetail?.targetPrice && stockDetail?.price
                     ? stockDetail.price < stockDetail.targetPrice
-                      ? `현재가보다 ${((stockDetail.targetPrice - stockDetail.price) / stockDetail.price * 100).toFixed(0)}% 높아요 (상승 여력)`
+                      ? `애널리스트 목표가 기준 현재가 대비 +${((stockDetail.targetPrice - stockDetail.price) / stockDetail.price * 100).toFixed(0)}%`
                       : '현재가가 목표가에 도달했어요'
                     : '증권사 애널리스트 평균 예상가'}
                 </p>
@@ -655,8 +658,16 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               </div>
             )}
 
-            {/* News */}
-            {news.length > 0 && (
+            {/* News (Phase 2 지연 로딩) */}
+            {news === null && (
+              <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50 animate-pulse">
+                <div className="h-4 bg-slate-800 rounded w-24 mb-4"></div>
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-800/50 rounded-xl"></div>)}
+                </div>
+              </div>
+            )}
+            {news !== null && news.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">최신 뉴스</h3>
                 <p className="text-xs text-slate-500 mb-4">이 종목과 관련된 최근 뉴스예요. 투자 전 꼭 확인해보세요!</p>

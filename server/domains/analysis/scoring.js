@@ -182,7 +182,8 @@ export function calculateTechnicalScore(db, code) {
 }
 
 // Supply/Demand Score: 0.0 ~ 2.0 (가중 감쇠 방식)
-// 최근일에 높은 가중치, 오래된 날에 낮은 가중치 (decay factor 0.8)
+// 스코어 계산: 최근 10일 순매수일에 0.8^i 가중치 부여 → 정규화
+// 연속 매수일 카운트: 스코어 계산에 사용하지 않음, UI 표시용으로만 detail에 반환
 export function calculateSupplyDemandScore(db, code) {
     const rows = db.prepare(
         'SELECT date, institution, foreign_net FROM investor_history WHERE code = ? ORDER BY date DESC LIMIT 20'

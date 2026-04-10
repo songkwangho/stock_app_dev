@@ -37,6 +37,7 @@ const App = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [nickname, setNickname] = useState(() => localStorage.getItem('nickname') || '');
   const [showDisclaimer, setShowDisclaimer] = useState(() => !localStorage.getItem('disclaimer_accepted'));
+  const [onboardingStep, setOnboardingStep] = useState(() => localStorage.getItem('onboarding_done') ? 0 : -1); // -1=대기, 1=step1, 2=step2, 0=완료
 
   const handleNicknameChange = (name: string) => {
     setNickname(name);
@@ -226,8 +227,10 @@ const App = () => {
                   </div>
                   <div className="max-h-96 overflow-auto">
                     {alerts.length === 0 ? (
-                      <div className="p-8 text-center text-slate-600 text-sm">
-                        알림이 없습니다.
+                      <div className="p-8 text-center">
+                        <p className="text-2xl mb-2">🔔</p>
+                        <p className="text-slate-400 font-bold mb-1">아직 알림이 없어요</p>
+                        <p className="text-slate-600 text-xs">보유·관심 종목에 주요 변화가 생기면 알려드려요</p>
                       </div>
                     ) : (
                       alerts.map((alert) => {
@@ -339,11 +342,33 @@ const App = () => {
               <p>종목 추천 점수와 의견은 알고리즘 자동 산출 결과이며, 전문 투자 조언이 아닙니다.</p>
             </div>
             <button
-              onClick={() => { localStorage.setItem('disclaimer_accepted', '1'); setShowDisclaimer(false); }}
+              onClick={() => { localStorage.setItem('disclaimer_accepted', '1'); setShowDisclaimer(false); setOnboardingStep(1); }}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors"
             >
               확인했습니다
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Flow (2단계) */}
+      {onboardingStep > 0 && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4">
+            {onboardingStep === 1 && (
+              <>
+                <p className="text-xs text-blue-400 font-bold">1/2</p>
+                <h2 className="text-lg font-bold text-white">내 주식을 추가해볼게요</h2>
+                <p className="text-sm text-slate-400 leading-relaxed">보유 종목을 추가하면 수익률 추적, 매수/매도 의견, 알림을 받을 수 있어요.</p>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-center">
+                  <p className="text-xs text-slate-500">예시: "삼성전자"를 검색해보세요</p>
+                </div>
+                <div className="flex space-x-3">
+                  <button onClick={() => { localStorage.setItem('onboarding_done', '1'); setOnboardingStep(0); }} className="flex-1 py-3 bg-slate-800 text-slate-400 text-sm font-bold rounded-xl">건너뛰기</button>
+                  <button onClick={() => { setOnboardingStep(0); localStorage.setItem('onboarding_done', '1'); navigateTo('analysis'); }} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors">직접 추가할게요</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

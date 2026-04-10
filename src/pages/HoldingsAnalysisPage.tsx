@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle, Eye } from 'lucide-react';
 import StockSearchInput from '../components/StockSearchInput';
-import type { Holding, StockSummary } from '../types/stock';
+import { useNavigationStore } from '../stores/useNavigationStore';
+import { stockApi } from '../api/stockApi';
+import type { Holding, StockSummary, WatchlistItem } from '../types/stock';
 
 interface HoldingsAnalysisPageProps {
   holdings: Holding[];
@@ -24,6 +26,14 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [newForm, setNewForm] = useState({ avgPrice: '', quantity: '' });
   const [searchResetKey, setSearchResetKey] = useState(0);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [subTab, setSubTab] = useState<'holdings' | 'watchlist'>('holdings');
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+
+  useEffect(() => {
+    if (subTab === 'watchlist') {
+      stockApi.getWatchlist().then(setWatchlist).catch(() => {});
+    }
+  }, [subTab]);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -103,8 +113,14 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold mb-2">내 포트폴리오</h2>
-          <p className="text-slate-500 text-sm">보유 종목을 추가/수정/삭제하고 수익률을 한눈에 확인하세요.</p>
+          <h2 className="text-2xl font-bold mb-2">내 종목 관리</h2>
+          <div className="flex items-center space-x-1 bg-slate-900/50 rounded-xl p-1 border border-slate-800">
+            <button onClick={() => setSubTab('holdings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${subTab === 'holdings' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>보유종목</button>
+            <button onClick={() => setSubTab('watchlist')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1 ${subTab === 'watchlist' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              <Eye size={14} />
+              <span>관심종목</span>
+            </button>
+          </div>
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
@@ -119,6 +135,51 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         </button>
       </div>
 
+      {subTab === 'watchlist' && (
+        <div className="space-y-4">
+          <StockSearchInput
+            placeholder="관심종목 추가 (종목명/코드 검색)"
+            onSelect={async (s) => {
+              try { await stockApi.addToWatchlist(s.code); setWatchlist(await stockApi.getWatchlist()); } catch {}
+            }}
+            resetKey={searchResetKey}
+          />
+          {watchlist.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {watchlist.map(item => (
+                <div key={item.code} className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 flex items-center justify-between group">
+                  <div className="cursor-pointer" onClick={() => onDetailClick({ code: item.code, name: item.name, category: item.category })}>
+                    <p className="font-bold group-hover:text-blue-400 transition-colors">{item.name}</p>
+                    <p className="text-xs text-slate-500 font-mono">{item.code}</p>
+                    <p className="text-sm font-bold mt-1">₩{item.price?.toLocaleString() || '---'}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {item.market_opinion && (
+                      <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                        item.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-400' :
+                        item.market_opinion === '부정적' ? 'bg-red-500/10 text-red-400' : 'bg-slate-500/10 text-slate-400'
+                      }`}>{item.market_opinion}</span>
+                    )}
+                    <button onClick={async () => {
+                      try { await stockApi.removeFromWatchlist(item.code); setWatchlist(w => w.filter(x => x.code !== item.code)); } catch {}
+                    }} className="p-2 text-red-400/60 hover:text-red-400 min-w-[44px] min-h-[44px] flex items-center justify-center">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
+              <p className="text-3xl mb-4">👀</p>
+              <p className="text-slate-300 font-bold text-lg mb-2">관심 종목이 없어요</p>
+              <p className="text-slate-500 text-sm">마음에 드는 종목을 추가하면 한 곳에서 볼 수 있어요</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === 'holdings' && <>
       {/* Summary Stats */}
       {holdings.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -238,13 +299,16 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     parseFloat(profitRate) >= -7 ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
-                    {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 일부 익절도 고려해 보���요' :
+                    {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 일부 익절도 고려해 보세요' :
                      parseFloat(profitRate) >= 10 ? '잘 하고 계세요! 추세를 유지해 보세요' :
                      parseFloat(profitRate) >= 0 ? '소폭 수익 중이에요. 지켜보세요' :
-                     parseFloat(profitRate) >= -3 ? '소��� 손실이에요. 장기적으로 여유를 가져보세요' :
+                     parseFloat(profitRate) >= -3 ? '소폭 손실이에요. 장기적으로 여유를 가져보세요' :
                      parseFloat(profitRate) >= -7 ? '손실이 커지고 있어요. 손절 기준(-7%)에 근접했어요' :
                      '손절 기준에 도달했어요. 추가 손실 전 결정이 필요해요'}
                   </p>
+                  {(parseFloat(profitRate) >= 20 || parseFloat(profitRate) <= -7) && (
+                    <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">종목 분석 →</button>
+                  )}
                 </div>
               </div>
 
@@ -268,6 +332,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                           : stock.holding_opinion === '추가매수' ? '5일선 근처에서 지지받고 있어요'
                           : '5일선 위, 이평선 정배열. 상승 흐름 유지 중'}
                       </span>
+                      <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline ml-1">상세 보기 →</button>
                     </div>
                   )}
                   {stock.market_opinion && (
@@ -375,20 +440,27 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
       {/* Empty State */}
       {holdings.length === 0 && (
         <div className="text-center py-20 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
-          <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center mx-auto mb-4 border border-slate-800">
-            <PlusCircle size={28} className="text-slate-600" />
+          <p className="text-3xl mb-4">📊</p>
+          <p className="text-slate-300 font-bold text-lg mb-2">아직 보유 종목이 없어요</p>
+          <p className="text-slate-500 text-sm mb-6">가진 주식을 추가하면 수익률을 한눈에 볼 수 있어요</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-bold transition-colors inline-flex items-center space-x-2"
+            >
+              <Plus size={16} />
+              <span>종목 추가하기</span>
+            </button>
+            <button
+              onClick={() => useNavigationStore.getState().navigateTo('recommendations')}
+              className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-sm font-bold transition-colors"
+            >
+              추천 종목 보기
+            </button>
           </div>
-          <p className="text-slate-400 font-semibold mb-2">아직 보유 종목이 없어요</p>
-          <p className="text-slate-600 text-sm mb-6">첫 번째 종목을 추가해서 포트폴리오를 시작해보세요!</p>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-bold transition-colors inline-flex items-center space-x-2"
-          >
-            <Plus size={16} />
-            <span>종목 추가하기</span>
-          </button>
         </div>
       )}
+      </>}
     </div>
   );
 };

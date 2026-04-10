@@ -301,6 +301,7 @@ export async function getStockData(code, fallbackName = null) {
             analysis += `PER ${per || '-'}, PBR ${pbr || '-'}, ROE ${roe || '-'}%. `;
             analysis += `[종합점수 ${totalScore}/10] 밸류에이션 ${valuation.total}/3, 기술지표 ${technical.total}/3, 수급 ${supplyDemand.total}/2, 추세 ${trend.total}/2.`;
 
+            // 임시 임계값 — Phase 4 백테스팅 후 데이터 기반 최적화 예정
             if (totalScore >= 7.0) {
                 market_opinion = '긍정적';
                 advice = `종합점수 ${totalScore}점으로 매수에 유리한 조건입니다. `;

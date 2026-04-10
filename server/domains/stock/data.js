@@ -152,6 +152,10 @@ const initialRecommendations = [
     { code: '012330', reason: '전동화 부품 매출 비중 확대', fairPrice: 270000, score: 84 },
 ];
 
+// ON CONFLICT 동작 의도:
+// - reason, score: 서버 재시작마다 코드 내 최신 값으로 덮어씌움 (운영자가 코드에서 관리)
+// - fair_price: 최초 등록 후 고정 (DB 값 유지, 시세 변동과 무관)
+// - source: 기존 DB 값 우선 유지 (알고리즘으로 변경된 경우 보존)
 const insertRec = db.prepare(`
     INSERT INTO recommended_stocks (code, reason, fair_price, score, source)
     VALUES (?, ?, ?, ?, 'manual')

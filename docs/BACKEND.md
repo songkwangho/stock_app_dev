@@ -108,9 +108,12 @@ server/
 ### MarketOpinion (10점, DB 저장)
 - **밸류에이션** (0~3): PER/PBR 섹터 중앙값 + PEG. 적자→0점+`per_negative`. PEG 무효→재정규화. 섹터 <5종목→`low_confidence`
 - **기술지표** (0~3): RSI(30%, 30~50보정) + MACD(25%) + 볼린저(20%, %B/80) + 거래량(25%)
-- **수급** (0~2): 최근 10일, 순매수일에 `0.8^i` 가중치. 외국인 `weighted/max*1.2`(max1.2) + 기관 `weighted/max*0.8`(max0.8). `detail`에 연속 매수일 카운트 별도 반환
+- **수급** (0~2): 감쇠 방식으로 스코어 계산 (연속 매수일 카운트는 스코어에 사용 안 함, UI 표시용)
+  - 스코어: 최근 10일 순매수일에 `0.8^i` 가중치 부여 → 정규화(`weighted/maxWeighted`)
+  - 외국인 `normalized * 1.2`(max 1.2) + 기관 `normalized * 0.8`(max 0.8)
+  - `detail.foreignConsecutive`, `detail.instConsecutive`: 연속 매수일 카운트 (UI용)
 - **추세** (0~2): SMA5/SMA20 배열 (정배열 2.0, 5일선위+역배열 1.0, 20일선위 0.5, 아래 0.0)
-- 합산 ≥7 긍정적, ≥4 중립적, <4 부정적
+- 합산 ≥7 긍정적, ≥4 중립적, <4 부정적 (임시 임계값 — Phase 4 백테스팅 후 최적화 예정)
 
 ### 알림 쿨다운
 | type | 설명 | 쿨다운 |

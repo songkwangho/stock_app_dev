@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Zap, ArrowRight, TrendingUp } from 'lucide-react';
 import type { Recommendation, StockSummary } from '../types/stock';
 
@@ -7,6 +8,7 @@ interface RecommendedStockCardProps {
 }
 
 const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProps) => {
+  const [showSourceInfo, setShowSourceInfo] = useState(false);
   const upside = stock.currentPrice && stock.fairPrice
     ? ((stock.fairPrice - stock.currentPrice) / stock.currentPrice * 100).toFixed(1)
     : null;
@@ -57,7 +59,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
         {upside && (
           <div className="mt-2 pt-2 border-t border-slate-800/50 flex items-center justify-center space-x-1.5">
             <TrendingUp size={12} className="text-emerald-500" />
-            <span className="text-xs font-bold text-emerald-400">+{upside}% 상승 여력 (앞으로 오를 수 있는 %)</span>
+            <span className="text-xs font-bold text-emerald-400">알고리즘 추정 적정가 대비 +{upside}%</span>
           </div>
         )}
       </div>
@@ -66,9 +68,12 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       <div className="flex items-center justify-between flex-wrap gap-y-1">
         <div className="flex items-center space-x-1.5">
           {stock.source && (
-            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
-              stock.source === 'manual' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'
-            }`} title={stock.source === 'manual' ? '전문가가 직접 선정한 종목이에요. 투자 결정은 본인이 하세요.' : '10가지 지표로 자동 분석한 종목이에요. 과거 성과가 미래를 보장하지 않아요.'}>
+            <span
+              onClick={(e) => { e.stopPropagation(); setShowSourceInfo(!showSourceInfo); }}
+              className={`text-xs font-bold px-2 py-1 rounded-lg cursor-pointer ${
+                stock.source === 'manual' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'
+              }`}
+            >
               {stock.source === 'manual' ? '전문가 선정' : '알고리즘'}
             </span>
           )}
@@ -86,6 +91,13 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
           상세 분석 →
         </span>
       </div>
+      {showSourceInfo && (
+        <p className="text-xs text-slate-500 mt-1 p-2 bg-slate-950/50 rounded-lg leading-relaxed">
+          {stock.source === 'manual'
+            ? '전문가가 직접 선정한 종목이에요. 투자 결정은 본인이 하세요.'
+            : '10가지 지표로 자동 분석한 종목이에요. 과거 성과가 미래를 보장하지 않아요.'}
+        </p>
+      )}
       <p className="text-xs text-slate-600 mt-2 leading-relaxed">투자 참고용이며 투자 권유가 아닙니다.</p>
     </div>
   );

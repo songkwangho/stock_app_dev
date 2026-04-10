@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Trash2, TrendingUp } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
 import StockSearchInput from '../components/StockSearchInput';
 import type { WatchlistItem, StockSummary } from '../types/stock';
@@ -129,9 +129,10 @@ const WatchlistPage = ({ onDetailClick }: WatchlistPageProps) => {
         </div>
       ) : (
         <div className="text-center py-20 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
-          <TrendingUp size={40} className="mx-auto text-slate-700 mb-4" />
-          <p className="text-slate-500 mb-2">관심종목이 없습니다.</p>
-          <p className="text-slate-600 text-sm">위에서 종목 코드를 입력해 추가해보세요.</p>
+          <p className="text-3xl mb-4">👀</p>
+          <p className="text-slate-300 font-bold text-lg mb-2">관심 종목이 없어요</p>
+          <p className="text-slate-500 text-sm mb-4">마음에 드는 종목을 추가하면 한 곳에서 볼 수 있어요</p>
+          <p className="text-xs text-slate-600">위에서 종목을 검색해 추가해보세요</p>
         </div>
       )}
     </div>

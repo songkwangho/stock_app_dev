@@ -4,22 +4,25 @@ interface ScoringBreakdownPanelProps {
   breakdown: ScoringBreakdown;
 }
 
+// 해석 기준: 영역 점수 / 만점 비율 (80%↑ 매우 좋음, 60%↑ 적정, 25%↑ 약함, 그 외 부정)
 const CATEGORY_LABELS: { key: string; label: string; max: number; descFn: (score: number, detail: ScoringBreakdown['detail']) => string }[] = [
   {
     key: 'valuation', label: '밸류에이션', max: 3,
-    descFn: (score) => {
-      if (score >= 2.5) return '업종 대비 매우 저렴한 편이에요';
-      if (score >= 1.5) return '업종 대비 적정 수준이에요';
-      if (score >= 0.5) return '업종 대비 다소 비싼 편이에요';
+    descFn: (score, _d) => {
+      const pct = score / 3;
+      if (pct >= 0.8) return '업종 대비 매우 저렴한 편이에요';
+      if (pct >= 0.6) return '업종 대비 적정 수준이에요';
+      if (pct >= 0.25) return '업종 대비 다소 비싼 편이에요';
       return '업종 대비 많이 비싼 편이에요';
     }
   },
   {
     key: 'technical', label: '기술지표', max: 3,
-    descFn: (score) => {
-      if (score >= 2.5) return '매수 신호가 강하게 나타나고 있어요';
-      if (score >= 1.5) return '보통 수준의 기술적 신호예요';
-      if (score >= 0.5) return '약한 기술적 신호예요';
+    descFn: (score, _d) => {
+      const pct = score / 3;
+      if (pct >= 0.8) return '매수 신호가 강하게 나타나고 있어요';
+      if (pct >= 0.6) return '보통 수준의 기술적 신호예요';
+      if (pct >= 0.25) return '약한 기술적 신호예요';
       return '매도 신호가 나타나고 있어요';
     }
   },
@@ -29,18 +32,20 @@ const CATEGORY_LABELS: { key: string; label: string; max: number; descFn: (score
       if (!d?.supplyDemand) return '데이터 부족';
       const fc = d.supplyDemand.foreignConsecutive || 0;
       const ic = d.supplyDemand.instConsecutive || 0;
-      if (score >= 1.5) return `외국인·기관 매수세가 강해요 (외 ${fc}일, 기관 ${ic}일)`;
-      if (score >= 0.8) return `일부 매수세가 있어요 (외 ${fc}일, 기관 ${ic}일)`;
-      if (score > 0) return '소규모 매수세가 있어요';
+      const pct = score / 2;
+      if (pct >= 0.8) return `외국인·기관이 사고 있어요 (외 ${fc}일, 기관 ${ic}일)`;
+      if (pct >= 0.6) return `일부 매수세가 있어요 (외 ${fc}일, 기관 ${ic}일)`;
+      if (pct >= 0.25) return '소규모 매수세가 있어요';
       return '뚜렷한 수급 신호가 없어요';
     }
   },
   {
     key: 'trend', label: '추세', max: 2,
     descFn: (score, d) => {
-      if (score >= 2.0) return '주가가 이평선 위에서 정배열이에요';
-      if (score >= 1.0) return '5일선 위이지만 완전한 상승세는 아니에요';
-      if (score >= 0.5) return '20일선은 지지하지만 5일선 아래예요';
+      const pct = score / 2;
+      if (pct >= 0.8) return '상승 흐름이에요 (이평선 정배열)';
+      if (pct >= 0.6) return '5일선 위이지만 완전한 상승세는 아니에요';
+      if (pct >= 0.25) return '20일선은 지지하지만 5일선 아래예요';
       return d?.trend?.reason || '하락 추세예요';
     }
   },

@@ -82,15 +82,19 @@ npm run build            # TypeScript 체크 + 프로덕션 빌드
 - 모든 페이지 lazy loading. API는 `stockApi.ts` 통해서만. 상태는 도메인별 Zustand 스토어
 - **반응형**: PC 사이드바(`hidden md:flex`) + 모바일 하단 탭바 5개(`fixed bottom-0 md:hidden`)
   - 모바일 탭: 대시보드 / 포트폴리오 / 추천 / 알림(미읽은 뱃지) / 설정
-  - 관심종목·스크리너·주요종목은 PC 사이드바에만 노출
+  - 관심종목: 포트폴리오 페이지 내 "보유종목/관심종목" 탭 전환 (A안 적용)
+  - 스크리너·주요종목은 PC 사이드바에만 노출
 - **초보자 UX**:
-  - 재무지표 업종 **중앙값** 기준 비교 (스코어링과 동일 기준)
-  - 스코어 게이지 시각화 (영역별 점수 기반 한국어 해석)
-  - 차트 라인/캔들 토글, 알림 아이콘+우선순위, 데이터 갱신 시각("N분 전")
-  - holding_opinion 구체적 이유 (손절%/이평선 상태)
-  - 수익률 6구간 메시지 (목표수익달성~손절도달)
-  - 추천 source 신뢰도 설명 + fairPrice 출처
-  - 투자 면책 고지 3곳 (첫 실행 모달 / 추천 페이지 상단 / 종목 상세 하단)
+  - 온보딩 2단계: 면책 모달 → "내 주식 추가" 안내 (건너뛰기/직접 추가)
+  - 대시보드: 빈 포트폴리오 시 CTA 카드 ("종목 추가하기/추천 종목 둘러보기")
+  - Empty State: 포트폴리오(📊), 관심종목(👀), 알림(🔔) 각각 전용 UI
+  - 재무지표 업종 **중앙값** 기준, 스코어 해석 만점대비 비율(80%/60%/25%) 기반
+  - 차트 라인/캔들 토글, 알림 아이콘+우선순위
+  - 데이터 갱신: "N분 전 (HH:MM, 장중 데이터/전일 종가)" 장중/장외 구분
+  - holding_opinion 구체적 이유 + 행동유도 "상세 보기 →" 링크
+  - 수익률 6구간 + 극단 구간(≥20%, ≤-7%)에 "종목 분석 →" 링크
+  - 추천 source: 탭/클릭 accordion 인라인 설명. 면책 문구 안내형
+  - 상세뷰: Phase1(가격+지표) → Phase2(뉴스+재무+섹터 지연, 스켈레톤)
 
 ### device_id
 - 로그인 없음. `DeviceIdStorage` 인터페이스로 환경별 교체 (Web: localStorage, Capacitor: 준비됨)
@@ -151,27 +155,27 @@ Opinion 분리, DeviceIdStorage, Zustand 3개 스토어, 알림 쿨다운, PER/P
 
 ### Phase 2 - 인프라 전환 (진행 중, 우선순위 순)
 - [x] 백엔드 도메인 분리 (db/, scrapers/, helpers/, domains/, scheduler)
-- [x] getStockData+syncAllStocks → domains/stock/service.js
-- [x] recalcWeights → domains/portfolio/service.js
-- [x] PUT /api/holdings/:code, 수급 가중 감쇠, 투자 면책 고지
-1. [ ] server.js 라우트 → domains/*/router.js 분리 — 완료 후 다음 단계로
-2. [ ] device_id HMAC 서명 + 기존 device_id 마이그레이션 전략 수립
-3. [ ] SQLite → PostgreSQL 전환 — 라우트 분리 완료 후 착수
-4. [ ] KIS/KRX 공식 API 이관 — KIS(이용약관 검토) / KRX(전일 데이터 허용 여부) 분리 평가
+- [x] getStockData+syncAllStocks → domains/stock/service.js, recalcWeights → portfolio/service.js
+- [x] PUT /api/holdings/:code, 수급 가중 감쇠, 투자 면책 고지, 온보딩, API 우선순위 로딩
+1. [ ] 라우트 분리: server.js → domains/*/router.js (순서: 알림→관심종목→포트폴리오→분석→종목)
+2. [ ] HMAC 서명 + 마이그레이션 전략 결정 (A: 구 ID 허용 기간 vs B: 강제 재등록)
+3. [ ] SQLite → PostgreSQL 전환 (라우트 분리 완료 후 착수)
+4. [ ] KIS/KRX 평가 (별도 조사 태스크, 코드 작업 전 선행): KIS 이용약관 / KRX 전일 데이터 허용 여부
 
 ### Phase 3 - 앱 배포
 - [ ] Capacitor 설정 + `@capacitor/preferences`로 device_id 저장 교체
-- [ ] Push + 배치 알림 단일 파이프라인 설계 (이중 발송 방지)
-- [ ] 오프라인 모드 배너 + 타임스탬프 UI 필수 구현
-- [ ] 앱스토어 심사 문서: 투자 면책 조항 전략 수립
+- [ ] `@capacitor/network`로 온/오프라인 감지 (API 실패와 구분) + 오프라인 배너
+- [ ] Push + 배치 알림 단일 파이프라인 설계 (PostgreSQL 전환 이후 착수, 이중 발송 방지)
+- [ ] 앱스토어 심사: 투자 면책 조항 + "알고리즘 추정 적정가 대비 N%" 표현 통일 (적용 완료)
 - [ ] App Store / Play Store 배포
 
 ### Phase 4 - 품질 향상
-- **선행 조건** (즉시):
-  - [x] stock_history 무기한 보관 정책 확인 (cleanupOldData는 stock_history 미삭제 — 이미 적용됨)
-  - [ ] 장기 데이터 초기 적재 스크립트 준비 (백테스팅용 과거 OHLCV 대량 수집)
+- **선행 조건** (Phase 3 착수 전 실행):
+  - [x] stock_history 무기한 보관 정책 확인 (이미 적용)
+  - [x] 임계값(7점/4점)에 "임시값, 백테스팅 후 최적화" 주석 추가 (이미 적용)
+  - [ ] 장기 데이터 초기 적재 스크립트 준비 (데이터 누적 기간 확보, Phase 3 전에 실행)
 - [ ] 백테스팅 모듈: stock_history 기반 과거 시점 스코어 재계산 → 실제 수익률 비교
-- [ ] 스코어 임계값(7점/4점) 데이터 기반 최적화
+- [ ] 스코어 임계값 데이터 기반 최적화
 - [ ] 수급 스코어에 순매수 금액 가중치 추가
 
 ---
