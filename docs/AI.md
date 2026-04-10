@@ -14,7 +14,12 @@
 
 ### 2. 백엔드 개발
 - Express 서버 → 도메인별 분리 (단일 2,237줄 → 모듈 + 라우터 분리)
-- **9차 라우트 분리 완료**: server.js 891줄 → 80줄 컴포지션 루트 + 5개 도메인 라우터(`alert/watchlist/portfolio/analysis/stock`, 총 28 endpoints). 마운트 순서: 알림→관심종목→포트폴리오→분석→종목 (specific path가 generic path를 가로채지 않도록)
+- **9차 라우트 분리**: server.js 891줄 → 80줄 컴포지션 루트 + 5개 도메인 라우터
+- **10차 추가 정리**:
+  - **시스템 라우터 격리**: `domains/system/router.js` 신설(`/health`, `/market/indices`). stockRouter 책임 9 → 7 endpoints. 총 6개 라우터.
+  - **computeSMA 위치 이동**: `portfolio/router.js`의 로컬 헬퍼였던 `computeSMA`를 `analysis/scoring.js`로 옮겨 분석 도메인 유틸로 정리. `computeSMA(db, code)` 시그니처.
+  - **cleanupOldData 시드 보존 가드**: `recommended_stocks WHERE created_at < ? AND source != 'manual'`. ON CONFLICT가 `created_at`을 갱신하지 않아, 가드 없이 서버 20일+ 무중단 운영 시 시드 추천이 통째로 사라지던 잠재 버그 수정.
+  - **알림 메시지 중립적 표현**: `service.js`의 모든 INSERT 메시지("매도를 검토해 주세요" 등)와 `ALERT_TYPE_LABELS`("매도 신호" → "가격 하락 경고")를 일괄 정비.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건
@@ -29,8 +34,10 @@
 - 도메인 스토어: useNavigationStore, usePortfolioStore, useAlertStore, useWatchlistStore
 
 **투자 면책 + 온보딩**:
-- 첫 실행 면책 모달(원금 손실 강조 + "이 앱은 정보 제공 도구로, 실제 주식 거래는 지원하지 않아요" 명시) → 온보딩 스텝(종목 추가 안내) → 대시보드 CTA(재방문 시만)
-- 면책 고지 6곳: ① 모달 ② 추천 페이지 상단(안내형) ③ 종목 상세 하단 ④ 추천 카드 하단(증권사 앱 안내) ⑤ HoldingsAnalysisPage 매도/추가매수 뱃지 하단(증권사 앱 안내) ⑥ ScoringBreakdownPanel ("10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요")
+- 첫 실행 면책 모달(원금 손실 강조 + "이 앱은 정보 제공 도구로, 실제 주식 거래는 지원하지 않아요" 명시) → 온보딩 스텝(종목 추가 안내) → **첫 종목 추가 직후 인라인 가이드 카드(1회, `onboarding_first_stock_guided`)** → 대시보드 CTA(재방문 시만)
+- 면책 고지 7곳: ① 모달 ② 추천 페이지 상단 ③ 종목 상세 종합의견 박스(market_opinion 뱃지에 📊 힌트 + 인라인 설명) ④ 종목 상세 분석 영역 하단 ⑤ 추천 카드 하단 ⑥ HoldingsAnalysisPage "주의 필요"/"추가 검토" 뱃지 하단 ⑦ ScoringBreakdownPanel **상단** (스코어 직후, 맥락 우선)
+- **HoldingOpinion 표시 라벨 소프트화**: badge에서 "매도" → "주의 필요", "추가매수" → "추가 검토" (명령어 → 상태 설명). 내부 알고리즘 값은 그대로 유지하여 호환성 보존.
+- **ALERT_TYPE_LABELS 중립적 표현**: "매도 신호" → "가격 하락 경고", "매수 타이밍" → "가격 지지 알림" 등 (앱스토어 심사 대비)
 
 **스코어링/지표 시각화**:
 - ScoringBreakdownPanel: 4영역 게이지 바 + 만점대비 비율(80/60/25%) 한국어 해석
@@ -52,9 +59,11 @@
 - Empty State 3곳: 포트폴리오(📊), 관심종목(👀), 알림(🔔)
 - 추천 페이지 하단 + 대시보드 하단에 "전체 종목 보기"(MajorStocksPage 진입) 카드
 - 스크리너 프리셋에 조건 요약 (`PER < 15 + ROE > 10%`) 표시
-- 알림 항목에 두 액션 버튼: `[지금 확인하기]`(종목 상세 이동) / `[나중에 볼게요]`(패널 닫기). 우측 휴지통은 stopPropagation 단건 삭제 전용
-- HelpBottomSheet [?] 버튼: PER/PBR/ROE + RSI/MACD/볼린저밴드 + 투자자 매매동향
+- 알림 패널 반응형: PC는 헤더 드롭다운, **모바일은 전체 화면 모달 (스크롤 충돌 회피)**. 각 항목에 `[지금 확인하기]`/`[나중에 볼게요]` 버튼. 우측 휴지통은 stopPropagation 단건 삭제 전용
+- HelpBottomSheet [?] 버튼: PER/PBR/ROE/RSI/MACD/볼린저밴드/투자자 매매동향/SMA. **콘텐츠 4단계 작성 기준**: 정의 → 높으면/낮으면 → "이 앱에서는?" 블루 박스 → 예시 숫자
 - DashboardPage 수익률 카드 subtitle: `₩원금 → ₩평가액 (가중 평균)` 형태로 절대 금액 병기
+- 분기 재무제표 단위 표시(`단위: 억 원`) + 1조 이상 자동 포맷팅(`X조 Y,YYY억`)
+- 투자자 매매동향 차트 레이블 부연: "개인 투자자 (일반인)", "외국인 투자자 (해외)", "기관 투자자 (회사·펀드)"
 
 **데이터 흐름**:
 - StockDetailView 2단계 로딩: Phase1(가격/지표) await → Phase2(뉴스/재무/섹터) fire-and-forget + 스켈레톤. Phase2 실패는 조용히 빈 값 (catch)
@@ -92,7 +101,8 @@
 
 | 항목 | 현황 | 계획 (Phase) |
 |------|------|------|
-| ~~라우트 잔존~~ | ~~server.js ~880줄 (28개 라우트)~~ | ✅ 9차 분리 완료 (server.js 80줄 + 5개 라우터) |
+| ~~라우트 잔존~~ | ~~server.js ~880줄 (28개 라우트)~~ | ✅ 9~10차 분리 완료 (server.js 80줄 + 6개 라우터: alert/watchlist/portfolio/analysis/stock/system) |
+| ~~cleanupOldData 시드 삭제~~ | ~~서버 20일+ 운영 시 시드 추천 사라짐~~ | ✅ 10차에서 `source != 'manual'` 가드 추가 |
 | device_id 보안 | CORS+Rate limit 적용 | HMAC 서명 + 마이그레이션 (P2-1, 라우트 분리 후 다음 우선순위) |
 | SQLite 블로킹 | 5초 지연 실행으로 완화 | PostgreSQL 비동기 전환 (P2-3). 사전 작업: `syncAllStocks()` 비동기 재작성 범위 산정 |
 | 스크래핑 의존 | 핵심 데이터 네이버 스크래핑 | KIS/KRX 분리 평가 (P2-4) |

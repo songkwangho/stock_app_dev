@@ -17,6 +17,7 @@ import watchlistRouter from './domains/watchlist/router.js';
 import portfolioRouter from './domains/portfolio/router.js';
 import analysisRouter from './domains/analysis/router.js';
 import stockRouter from './domains/stock/router.js';
+import systemRouter from './domains/system/router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,12 +72,15 @@ setupCleanup(db);
 setupScheduler();
 
 // --- Mount Domain Routers ---
-// Order: alert → watchlist → portfolio → analysis → stock (stock is most generic)
+// Path-prefix 라우터(alerts/watchlist/holdings)는 prefix가 겹치지 않아 순서 무관.
+// '/api'에 직접 마운트되는 analysis/stock/system은 specific path를 먼저 둬야 한다 —
+// analysisRouter의 '/stock/:code/indicators'가 stockRouter의 '/stock/:code'에 가로채이지 않도록.
 app.use('/api/alerts', alertRouter);
 app.use('/api/watchlist', watchlistRouter);
 app.use('/api/holdings', portfolioRouter);
+app.use('/api', systemRouter);   // owns /health, /market/indices (no /stock/* conflict)
 app.use('/api', analysisRouter); // owns /stock/:code/{indicators,volatility,financials,news,chart}, /screener, /sector
-app.use('/api', stockRouter);    // owns /stock/:code, /stocks, /search, /recommendations, /market/indices, /health
+app.use('/api', stockRouter);    // owns /stock/:code, /stocks, /search, /recommendations
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

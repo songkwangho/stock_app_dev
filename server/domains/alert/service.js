@@ -19,23 +19,23 @@ export function generateAlerts(db, code, name, price, sma5, targetPrice) {
             ).get(device_id, code, type, cutoff);
         };
 
-        // Holding alerts
+        // Holding alerts — 모든 메시지는 중립적·서술형 표현으로 작성한다 (앱스토어 심사 대비).
         if (sma5) {
             if (price < sma5 && !hasDuplicate('sma5_break')) {
                 db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                     device_id, code, name, 'sma5_break',
-                    `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원)을 하향 이탈했습니다. 리스크 관리가 필요합니다.`
+                    `${name}(${code}) 주가가 5일 평균(${sma5.toLocaleString()}원) 아래로 내려갔어요. 단기 하락 흐름이에요.`
                 );
             }
             if (price >= sma5 * 0.99 && price <= sma5 * 1.01 && !hasDuplicate('sma5_touch')) {
                 db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                     device_id, code, name, 'sma5_touch',
-                    `${name}(${code}) 주가가 5일선(${sma5.toLocaleString()}원) 부근에서 지지를 받고 있습니다. 추가매수 타점을 검토해 보세요.`
+                    `${name}(${code}) 주가가 5일 평균(${sma5.toLocaleString()}원) 부근에서 지지받고 있어요.`
                 );
             }
         }
 
-        // sell_signal: when both 5MA AND 20MA broken (이중 이탈)
+        // sell_signal: 5MA + 20MA 이중 이탈 — 중립적 표현 ("주의가 필요해요")
         const sma20ForAlert = (() => {
             const hist = db.prepare('SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20').all(code);
             return hist.length >= 20 ? Math.round(hist.reduce((s, r) => s + r.price, 0) / 20) : null;
@@ -43,7 +43,7 @@ export function generateAlerts(db, code, name, price, sma5, targetPrice) {
         if (sma5 && sma20ForAlert && price < sma5 && price < sma20ForAlert && !hasDuplicate('sell_signal')) {
             db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                 device_id, code, name, 'sell_signal',
-                `${name}(${code}) 주가가 5일선과 20일선을 모두 이탈했습니다. 매도를 검토해 주세요.`
+                `${name}(${code}) 주가가 5일·20일 평균 모두 아래로 내려갔어요. 하락 추세이니 주의가 필요해요.`
             );
         }
     }
@@ -70,13 +70,13 @@ export function generateAlerts(db, code, name, price, sma5, targetPrice) {
             if (price >= targetPrice * 0.95 && !hasDuplicate('target_near')) {
                 db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                     device_id, code, name, 'target_near',
-                    `${name}(${code}) 현재가(${price.toLocaleString()}원)가 목표가(${targetPrice.toLocaleString()}원)에 근접했습니다.`
+                    `${name}(${code}) 현재가(${price.toLocaleString()}원)가 목표가(${targetPrice.toLocaleString()}원)에 근접했어요.`
                 );
             }
             if (price < targetPrice * 0.7 && !hasDuplicate('undervalued')) {
                 db.prepare('INSERT INTO alerts (device_id, code, name, type, message) VALUES (?, ?, ?, ?, ?)').run(
                     device_id, code, name, 'undervalued',
-                    `${name}(${code}) 현재가가 목표가 대비 30% 이상 저평가 상태입니다. 매수 기회를 검토해 보세요.`
+                    `${name}(${code}) 현재가가 목표가 대비 30% 이상 낮은 수준이에요. 분석 결과를 확인해보세요.`
                 );
             }
         }

@@ -1,23 +1,11 @@
 import express from 'express';
 import db from '../../db/connection.js';
 import { requireDeviceId } from '../../helpers/deviceId.js';
-import { calculateHoldingOpinion } from '../analysis/scoring.js';
+import { calculateHoldingOpinion, computeSMA } from '../analysis/scoring.js';
 import { recalcWeights } from './service.js';
 import { getStockData } from '../stock/service.js';
 
 const router = express.Router();
-
-// Compute SMA5/SMA20 from recent history. Returns { sma5, sma20 } (null if insufficient data).
-// sma_available: SMA5 계산 가능 여부 (히스토리 5일 이상 존재)
-function computeSMA(code) {
-    const history = db.prepare(
-        'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20'
-    ).all(code);
-    let sma5 = null, sma20 = null;
-    if (history.length >= 5) sma5 = Math.round(history.slice(0, 5).reduce((s, r) => s + r.price, 0) / 5);
-    if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
-    return { sma5, sma20 };
-}
 
 // GET /api/holdings - list holdings with runtime holding_opinion
 router.get('/', (req, res) => {
@@ -33,7 +21,7 @@ router.get('/', (req, res) => {
         `).all(deviceId);
 
         const enriched = holdings.map(h => {
-            const { sma5, sma20 } = computeSMA(h.code);
+            const { sma5, sma20 } = computeSMA(db, h.code);
             return {
                 ...h,
                 market_opinion: h.market_opinion || '중립적',
@@ -113,7 +101,7 @@ router.post('/', async (req, res) => {
         `).get(deviceId, code);
 
         if (updated) {
-            const { sma5, sma20 } = computeSMA(code);
+            const { sma5, sma20 } = computeSMA(db, code);
             updated.holding_opinion = calculateHoldingOpinion(updated.avg_price, updated.price, sma5, sma20);
             updated.market_opinion = updated.market_opinion || '중립적';
             updated.sma_available = sma5 !== null;
@@ -155,7 +143,7 @@ router.put('/:code', (req, res) => {
         `).get(deviceId, code);
 
         if (updated) {
-            const { sma5, sma20 } = computeSMA(code);
+            const { sma5, sma20 } = computeSMA(db, code);
             updated.holding_opinion = calculateHoldingOpinion(updated.avg_price, updated.price, sma5, sma20);
             updated.market_opinion = updated.market_opinion || '중립적';
             updated.sma_available = sma5 !== null;

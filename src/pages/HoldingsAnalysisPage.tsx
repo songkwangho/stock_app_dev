@@ -27,6 +27,8 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [searchResetKey, setSearchResetKey] = useState(0);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string; action?: { label: string; onClick: () => void } } | null>(null);
   const [subTab, setSubTab] = useState<'holdings' | 'watchlist'>('holdings');
+  // 첫 종목 추가 직후 1회 인라인 가이드 카드 ('onboarding_first_stock_guided')
+  const [firstStockGuide, setFirstStockGuide] = useState<{ code: string; name: string } | null>(null);
 
   // 온보딩에서 진입 시 검색창 자동 노출
   useEffect(() => {
@@ -42,6 +44,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const handleAdd = async () => {
     if (!newStock || !newForm.avgPrice) return;
     const justAdded = newStock;
+    const wasFirstStock = holdings.length === 0 && !localStorage.getItem('onboarding_first_stock_guided');
     try {
       await onAdd({
         code: justAdded.code,
@@ -50,11 +53,17 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         quantity: parseInt(newForm.quantity || '0'),
         value: 0,
       });
-      showToast(
-        'success',
-        `${justAdded.name}을(를) 추가했어요! 🎉 종목 상세에서 분석 결과를 확인해보세요.`,
-        { label: '보러가기', onClick: () => onDetailClick({ ...justAdded, category: '보유 종목' }) },
-      );
+      if (wasFirstStock) {
+        // 첫 종목: 토스트 대신 인라인 가이드 카드(1회) 표시
+        setFirstStockGuide({ code: justAdded.code, name: justAdded.name });
+        localStorage.setItem('onboarding_first_stock_guided', '1');
+      } else {
+        showToast(
+          'success',
+          `${justAdded.name}을(를) 추가했어요! 🎉 종목 상세에서 분석 결과를 확인해보세요.`,
+          { label: '보러가기', onClick: () => onDetailClick({ ...justAdded, category: '보유 종목' }) },
+        );
+      }
       setNewStock(null);
       setNewForm({ avgPrice: '', quantity: '' });
       setSearchResetKey(k => k + 1);
@@ -238,6 +247,42 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         </div>
       )}
 
+      {/* 첫 종목 추가 직후 인라인 가이드 카드 (1회 표시) */}
+      {firstStockGuide && (
+        <div className="bg-gradient-to-br from-emerald-600/10 to-blue-600/10 border border-emerald-500/20 rounded-3xl p-6 animate-in fade-in slide-in-from-top-4 duration-300 relative">
+          <button
+            onClick={() => setFirstStockGuide(null)}
+            className="absolute top-4 right-4 text-slate-500 hover:text-white p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="가이드 닫기"
+          >
+            <X size={18} />
+          </button>
+          <p className="text-2xl mb-2">🎉</p>
+          <h3 className="text-lg font-bold text-white mb-2">첫 종목을 추가했어요!</h3>
+          <p className="text-sm text-slate-300 leading-relaxed mb-4">
+            {firstStockGuide.name}의 종합점수, 기술지표, 업종 비교를 한눈에 볼 수 있어요.
+            지표가 어렵게 느껴진다면 [?] 버튼을 눌러 용어 설명을 확인해보세요.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => {
+                onDetailClick({ code: firstStockGuide.code, name: firstStockGuide.name, category: '보유 종목' });
+                setFirstStockGuide(null);
+              }}
+              className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors"
+            >
+              종목 분석 보기 →
+            </button>
+            <button
+              onClick={() => setFirstStockGuide(null)}
+              className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded-xl transition-colors"
+            >
+              나중에 볼게요
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Holdings Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {holdings.map((stock) => {
@@ -295,29 +340,40 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                       분석 중
                       <span className="font-normal text-slate-500 ml-1">이평선 데이터를 수집 중이에요. 잠시 후 다시 확인해보세요.</span>
                     </div>
-                  ) : stock.holding_opinion && (
+                  ) : stock.holding_opinion && (() => {
+                    // 표시 라벨은 명령어("매도")가 아닌 상태 설명("주의 필요")으로 변환.
+                    // 내부 holding_opinion 값은 알고리즘과 호환성을 위해 그대로 둔다.
+                    const displayLabel =
+                      stock.holding_opinion === '매도' ? '주의 필요' :
+                      stock.holding_opinion === '추가매수' ? '추가 검토' :
+                      stock.holding_opinion;
+                    const cautionLike = stock.holding_opinion === '매도' || stock.holding_opinion === '추가매수';
+                    return (
                     <div className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
                       stock.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
                       stock.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
                       stock.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
                       'bg-blue-500/10 text-blue-400 border-blue-500/20'
                     }`}>
-                      {stock.holding_opinion}
+                      {displayLabel}
                       <span className="font-normal text-slate-500 ml-1">
                         {stock.holding_opinion === '매도' && stock.avgPrice && stock.currentPrice
                           ? ((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100) <= -7
-                            ? `평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}% 손실. 손절 기준(-7%) 초과`
-                            : '5일선·20일선 모두 이탈. 하락세가 강해요'
-                          : stock.holding_opinion === '관망' ? '5일선 아래지만 20일선이 지지 중. 조금 기다려봐요'
-                          : stock.holding_opinion === '추가매수' ? '5일선 근처에서 지지받고 있어요'
-                          : '5일선 위, 이평선 정배열. 상승 흐름 유지 중'}
+                            ? `평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}% 손실이에요. 손절 기준(-7%)을 넘었어요.`
+                            : '5일·20일 평균 모두 아래로 내려갔어요. 하락 추세예요.'
+                          : stock.holding_opinion === '관망' ? '5일 평균 아래지만 20일 평균이 지지 중이에요. 조금 기다려봐요.'
+                          : stock.holding_opinion === '추가매수' ? '5일 평균 부근에서 지지받고 있어요.'
+                          : '5일 평균 위, 이평선 정배열이에요. 상승 흐름이 이어지고 있어요.'}
                       </span>
                       <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline ml-1">상세 보기 →</button>
-                      {(stock.holding_opinion === '매도' || stock.holding_opinion === '추가매수') && (
-                        <span className="block mt-1 font-normal text-[11px] text-slate-500 italic">거래는 증권사 앱에서 직접 진행해 주세요</span>
+                      {cautionLike && (
+                        <span className="block mt-1 font-normal text-[11px] text-slate-500 italic">
+                          이 신호는 참고용이에요. 판단은 본인이 해주세요. 실제 거래는 증권사 앱에서 직접 진행해 주세요.
+                        </span>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                   {stock.market_opinion && (
                     <span className={`text-xs font-bold px-2 py-1.5 rounded-lg ${
                       stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-400' :

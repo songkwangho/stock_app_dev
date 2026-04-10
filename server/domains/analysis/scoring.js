@@ -5,6 +5,19 @@ export function median(arr) {
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// SMA5/SMA20 from recent stock_history rows. Returns { sma5, sma20 } (null if insufficient).
+// 분석 도메인 유틸 — 포트폴리오 라우터의 holding_opinion 계산이 주 호출처지만,
+// 향후 다른 라우터에서도 재사용 가능. sma_available은 sma5 !== null로 판단한다.
+export function computeSMA(db, code) {
+    const history = db.prepare(
+        'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 20'
+    ).all(code);
+    let sma5 = null, sma20 = null;
+    if (history.length >= 5) sma5 = Math.round(history.slice(0, 5).reduce((s, r) => s + r.price, 0) / 5);
+    if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
+    return { sma5, sma20 };
+}
+
 // Valuation Score: 0.0 ~ 3.0
 export function calculateValuationScore(db, code, per, pbr, roe, price, targetPrice, epsCurrent, epsPrevious) {
     const stock = db.prepare('SELECT category FROM stocks WHERE code = ?').get(code);

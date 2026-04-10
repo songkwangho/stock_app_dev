@@ -542,7 +542,8 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   <h3 className="text-lg font-semibold">투자자별 매매동향</h3>
                   <button onClick={() => setHelpTerm('supplyDemand')} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label="수급 도움말">[?]</button>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">최근 10거래일 동안 개인·외국인·기관이 주식을 사고판 양을 보여줘요</p>
+                <p className="text-xs text-slate-500 mb-1">최근 10거래일 동안 개인·외국인·기관이 주식을 사고판 양을 보여줘요</p>
+                <p className="text-xs text-slate-600 mb-4">외국인·기관이 함께 매수하면 긍정적 신호로 보는 경우가 많아요. 단, 단기 흐름만으로 판단하지 마세요.</p>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stockDetail.investorData.slice(-10).map((d) => ({
@@ -554,9 +555,9 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
                       <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
                       <ReferenceLine y={0} stroke="#334155" />
-                      <Bar dataKey="individual" name="개인 (일반 투자자)" fill="#facc15" />
-                      <Bar dataKey="foreign" name="외국인 (해외 투자자)" fill="#ec4899" />
-                      <Bar dataKey="institution" name="기관 (증권사·펀드)" fill="#6366f1" />
+                      <Bar dataKey="individual" name="개인 투자자 (일반인)" fill="#facc15" />
+                      <Bar dataKey="foreign" name="외국인 투자자 (해외)" fill="#ec4899" />
+                      <Bar dataKey="institution" name="기관 투자자 (회사·펀드)" fill="#6366f1" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -567,7 +568,8 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {financials && financials.financials.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
                 <h3 className="text-lg font-semibold mb-2">분기별 실적</h3>
-                <p className="text-xs text-slate-500 mb-4">최근 분기별 매출과 이익 추이예요. 꾸준히 늘어나면 좋은 신호!</p>
+                <p className="text-xs text-slate-500 mb-1">최근 분기별 매출과 이익 추이예요. 꾸준히 늘어나면 좋은 신호!</p>
+                <p className="text-xs text-slate-600 mb-4">단위: 억 원 (네이버 증권 기준). 1조 = 10,000억</p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -585,9 +587,22 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                           {row.values.slice(0, 5).map((v, i) => {
                             const prev = i > 0 ? row.values[i - 1] : null;
                             const isGrowing = v !== null && prev !== null && v > prev;
+                            // 1조(10,000억) 이상은 "X조 Y,YYY억"으로, 그 외는 "N,NNN억"
+                            let formatted = '---';
+                            if (v !== null) {
+                              const abs = Math.abs(v);
+                              const sign = v < 0 ? '-' : '';
+                              if (abs >= 10000) {
+                                const jo = Math.floor(abs / 10000);
+                                const eok = abs % 10000;
+                                formatted = `${sign}${jo}조${eok > 0 ? ` ${eok.toLocaleString()}억` : ''}`;
+                              } else {
+                                formatted = `${sign}${abs.toLocaleString()}억`;
+                              }
+                            }
                             return (
                               <td key={i} className={`text-right py-2.5 px-3 ${v === null ? 'text-slate-600' : isGrowing ? 'text-emerald-400' : 'text-slate-300'}`}>
-                                {v !== null ? `${v.toLocaleString()}억` : '---'}
+                                {formatted}
                               </td>
                             );
                           })}
@@ -715,25 +730,35 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   <div className="flex items-center space-x-3 flex-wrap gap-y-2">
                     {/* Market Opinion (시장 기준) */}
                     <div className="flex items-center space-x-1.5">
-                      <span className={`text-lg font-black px-3 py-1 rounded-lg ${
+                      <span className={`text-lg font-black px-3 py-1 rounded-lg inline-flex items-center space-x-1 ${
                         stockDetail?.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
                         stockDetail?.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' : 'bg-slate-500/10 text-slate-400'
-                      }`}>{stockDetail?.market_opinion || '분석 중'}</span>
+                      }`}>
+                        <span>{stockDetail?.market_opinion || '분석 중'}</span>
+                        <span className="text-sm">📊</span>
+                      </span>
                       <span className="text-xs text-slate-500">시장 분석</span>
                     </div>
-                    {/* Holding Opinion (보유 기준, 보유 시에만) */}
-                    {isHolding && stock.avgPrice && (
-                      <div className="flex items-center space-x-1.5">
-                        <span className={`text-lg font-black px-3 py-1 rounded-lg border ${
-                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                          (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                          'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                        }`}>{(stockDetail as unknown as { holding_opinion?: string })?.holding_opinion || '보유'}</span>
-                        <span className="text-xs text-slate-500">보유 전략</span>
-                      </div>
-                    )}
+                    {/* Holding Opinion (보유 기준, 보유 시에만) — 명령어 → 상태 라벨 변환 */}
+                    {isHolding && stock.avgPrice && (() => {
+                      const ho = (stockDetail as unknown as { holding_opinion?: string })?.holding_opinion || '보유';
+                      const display = ho === '매도' ? '주의 필요' : ho === '추가매수' ? '추가 검토' : ho;
+                      return (
+                        <div className="flex items-center space-x-1.5">
+                          <span className={`text-lg font-black px-3 py-1 rounded-lg border ${
+                            ho === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                            ho === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                            ho === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          }`}>{display}</span>
+                          <span className="text-xs text-slate-500">보유 전략</span>
+                        </div>
+                      );
+                    })()}
                   </div>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    알고리즘 분석 결과로, 이것은 투자 추천이 아니에요. 점수와 의견은 참고용으로만 봐주세요.
+                  </p>
                 </div>
 
                 {/* Scoring Breakdown Visualization */}

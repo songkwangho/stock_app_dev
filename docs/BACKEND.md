@@ -23,33 +23,44 @@ server/
 │   └── toss.js           # captureChart (Puppeteer)
 ├── domains/
 │   ├── analysis/
-│   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median
+│   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median + computeSMA(db, code)
 │   │   ├── indicators.js # calculateIndicators (RSI/MACD/볼린저)
 │   │   └── router.js     # 분석 라우터 (indicators/volatility/financials/news/chart/screener/sector — 7 endpoints)
 │   ├── alert/
-│   │   ├── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   │   ├── service.js    # generateAlerts + ALERT_COOLDOWNS — 알림 메시지는 모두 중립적 표현
 │   │   └── router.js     # 알림 라우터 (4 endpoints)
 │   ├── portfolio/
 │   │   ├── service.js    # recalcWeights
-│   │   └── router.js     # 포트폴리오 라우터 (5 endpoints, computeSMA helper 포함)
+│   │   └── router.js     # 포트폴리오 라우터 (5 endpoints) — analysis/scoring.js의 computeSMA 사용
 │   ├── watchlist/
 │   │   └── router.js     # 관심종목 라우터 (3 endpoints)
-│   └── stock/
-│       ├── service.js    # getStockData + syncAllStocks + scheduleDaily8AM
-│       ├── data.js       # topStocks (97개) + initialRecommendations (20개)
-│       └── router.js     # 종목 라우터 (stock/stocks/search/recommendations/market/health — 9 endpoints)
+│   ├── stock/
+│   │   ├── service.js    # getStockData + syncAllStocks + scheduleDaily8AM
+│   │   ├── data.js       # topStocks (97개) + initialRecommendations (20개)
+│   │   └── router.js     # 종목 라우터 (stock/stocks/search/recommendations — 7 endpoints)
+│   └── system/
+│       └── router.js     # 시스템 라우터 (health, market/indices — 2 endpoints)
 └── scheduler.js          # setupScheduler + setupCleanup
 ```
 
 ### 라우터 마운트 (server.js)
 ```javascript
+// path-prefix 라우터 (alerts/watchlist/holdings)는 prefix가 겹치지 않아 순서 무관
 app.use('/api/alerts',    alertRouter);     // /api/alerts/*
 app.use('/api/watchlist', watchlistRouter); // /api/watchlist/*
 app.use('/api/holdings',  portfolioRouter); // /api/holdings/*
-app.use('/api',           analysisRouter);  // /stock/:code/{indicators,volatility,...}, /screener, /sector
-app.use('/api',           stockRouter);     // /stock/:code, /stocks, /search, /recommendations, /market, /health
+
+// '/api'에 직접 마운트되는 라우터는 specific path를 먼저 둬야 한다 —
+// analysisRouter('/stock/:code/indicators')가 stockRouter('/stock/:code')에 가로채이지 않도록.
+// systemRouter는 /health, /market/indices만 가져 stock/* 경로와 충돌하지 않으므로 제일 앞에 둬도 안전.
+app.use('/api', systemRouter);   // /health, /market/indices (충돌 없음)
+app.use('/api', analysisRouter); // /stock/:code/{indicators,volatility,financials,news,chart}, /screener, /sector
+app.use('/api', stockRouter);    // /stock/:code, /stocks, /search, /recommendations
 ```
-순서가 중요하다 — `analysisRouter`를 `stockRouter`보다 먼저 마운트해야 `/stock/:code/indicators` 같은 경로가 `/stock/:code` 매칭에 가로채이지 않는다. 각 라우터는 `import db from '../../db/connection.js'`로 DB를 직접 import한다 (의존성 주입 없음 — 단순화 의도).
+각 라우터는 `import db from '../../db/connection.js'`로 DB를 직접 import한다 (의존성 주입 없음 — 단순화 의도).
+
+### computeSMA 위치 (분석 도메인)
+SMA5/SMA20 계산은 `domains/analysis/scoring.js`의 `computeSMA(db, code)`로 옮겼다. 보유 종목 라우터(`holding_opinion` 런타임 계산)에서만 호출하지만, 향후 다른 라우터에서도 재사용 가능하도록 분석 도메인 유틸로 분리. `sma_available`은 `sma5 !== null`로 판단한다 (히스토리 5일 이상).
 
 ---
 
@@ -71,7 +82,7 @@ app.use('/api',           stockRouter);     // /stock/:code, /stocks, /search, /
 
 ---
 
-## API 엔드포인트 (28개)
+## API 엔드포인트 (28개, 6개 라우터)
 
 ### 종목
 | 메서드 | 경로 | 설명 |
@@ -86,7 +97,7 @@ app.use('/api',           stockRouter);     // /stock/:code, /stocks, /search, /
 ### 포트폴리오 (모든 엔드포인트에 `requireDeviceId` 적용)
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` + `sma_available` 포함). `sma_available=false`면 holding_opinion 신뢰 불가, UI에서 "분석 중" 표시. **`sma_available` 정의**: SMA5 계산 가능 여부 (`stock_history` 5일 이상 존재 → true). SMA20은 별도 판단하며 `holding_opinion` 알고리즘 5단계가 처리한다. |
+| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` + `sma_available` 포함). **`sma_available` 정의**: SMA5 계산 가능 여부 (`stock_history` 5일 이상 → true). `sma_available=false`이면 `holding_opinion`은 항상 `'보유'`로 반환되지만 신뢰할 수 없으므로 UI는 `sma_available`을 우선 검사해 "분석 중" 뱃지를 표시해야 한다 (값만 보고 "보유 신호"로 해석 금지). 3rd party 클라이언트는 두 필드를 함께 검사할 것. |
 | POST | `/api/holdings` | 신규 추가 (UPSERT) |
 | PUT | `/api/holdings/:code` | 부분 수정 (avgPrice, quantity). 미보유 시 404 |
 | DELETE | `/api/holdings/:code` | 삭제 |
@@ -156,6 +167,7 @@ app.use('/api',           stockRouter);     // /stock/:code, /stocks, /search, /
 
 > **cleanupOldData 범위**: `stock_analysis`와 `recommended_stocks`의 20일+ 데이터만 삭제.
 > `stock_history`와 `investor_history`는 삭제하지 않음 — 차트, 기술지표, 수급 스코어링에 과거 데이터 필요.
+> **시드 보존**: `recommended_stocks`는 `source != 'manual'` 조건으로만 삭제. `data.js`의 initialRecommendations는 ON CONFLICT가 `created_at`을 갱신하지 않아, 이 가드가 없으면 서버 20일+ 무중단 운영 시 시드 추천이 통째로 사라진다 (실제 발견된 버그).
 
 ## 데이터
 - 등록 종목: 97개 (8개 섹터)

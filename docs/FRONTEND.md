@@ -241,7 +241,8 @@ interface WatchlistActions {
   - PER/PBR/ROE/목표가 컨텍스트 설명 병기 (적자/저렴/적정/고평가, 우량 기업 판단 등)
   - `ScoringBreakdownPanel`: 10점 스코어 4개 영역 게이지 바 + 만점대비 비율(80/60/25%) 해석
   - 섹터 비교: 업종 **중앙값** 기준 (스코어링과 동일 기준)
-  - 분기 재무제표 테이블, 최근 뉴스 10건
+  - 분기 재무제표 테이블 (단위: 억 원, 1조 이상은 "X조 Y,YYY억" 자동 포맷팅), 최근 뉴스 10건
+  - 투자자 매매동향 차트 레이블: "개인 투자자 (일반인)", "외국인 투자자 (해외)", "기관 투자자 (회사·펀드)" — 초보자 친화 부연 설명 + 차트 하단 "외국인·기관이 함께 매수하면 긍정적 신호로 보는 경우가 많아요. 단기 흐름만으로 판단하지 마세요" 안내
   - 보유종목: `holding_opinion` 기반 수정 폼 / 비보유: 추가 폼
   - 의견 요약 섹션 하단: 면책 문구 ("이 분석은 참고용이며...")
   - 종목 코드 옆 데이터 갱신 시각: `getDataFreshnessLabel()` (장중/장외 자동 판단)
@@ -250,7 +251,7 @@ interface WatchlistActions {
 
 ### ScoringBreakdownPanel (스코어 시각화)
 - **Props**: `breakdown: ScoringBreakdown`
-- **기능**: 종합점수 /10 표시 + "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요." 면책 문구. 밸류에이션/기술지표/수급/추세 각각 게이지 바 + `value/max` 점수 텍스트 병기 (색각이상 사용자 대응) + 한국어 설명. `per_negative`/`low_confidence` 경고 플래그.
+- **기능**: 종합점수 /10 표시 + **즉시 그 아래에** "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요." 면책 문구 (스코어를 보기 전 맥락 이해를 위해 패널 상단 배치). 밸류에이션/기술지표/수급/추세 각각 게이지 바 + `value/max` 점수 텍스트 병기 (색각이상 사용자 대응) + 한국어 설명. `per_negative`/`low_confidence` 경고 플래그.
 
 ### StockSearchInput (종목 검색)
 - **Props**: `placeholder?`, `onSelect`, `resetKey?`, `className?`
@@ -268,6 +269,12 @@ interface WatchlistActions {
 ### HelpBottomSheet (용어 설명 바텀시트)
 - **Props**: `termKey: HelpTermKey | null`, `onClose`
 - **기능**: 8개 용어(PER/PBR/ROE/RSI/MACD/Bollinger/SupplyDemand/SMA) 설명을 바텀시트로 표시. 모바일은 하단, PC는 중앙. 외부 클릭/X 버튼으로 닫기
+- **콘텐츠 작성 기준 (4단계)**:
+  1. **정의**: 한 문장으로 (초등학생도 이해 가능한 수준)
+  2. **높으면/낮으면**: 이 지표가 크거나 작을 때 의미
+  3. **이 앱에서는?**: 이 앱의 어느 부분에서 이 개념이 쓰이는지 (블루 박스 강조)
+  4. **예시 숫자**: italic 텍스트로 한 줄 (예: "PER 10배 = 지금 주가로 10년치 이익을 산 셈")
+  > 교과서적 정의에 그치지 않고 "이 앱에서 어떻게 쓰이는지"를 명시해 초보자가 자신이 보고 있는 화면과 즉시 연결할 수 있도록 한다.
 
 ### WatchlistContent (관심종목 공유 컴포넌트)
 - **Props**: `onDetailClick`
@@ -389,8 +396,8 @@ PC/태블릿 (md: 이상):
 - 시장지수 (KOSPI/KOSDAQ)
 - 글로벌 검색바 (디바운스 300ms, 모바일에서 full-width)
 - 알림 벨 (미읽은 수 뱃지) — `useAlertStore.unreadCount`
-  - 알림 패널은 헤더 드롭다운 형태 (`absolute top-full right-0`, max-h-96 스크롤). 모바일 하단 탭바의 "알림" 탭도 동일한 패널을 토글한다 (별도 페이지 아님, 상태 `showAlerts`만 공유).
-  - 알림 아이콘 + 우선순위별 좌측 강조 border, 아이콘 + 한국어 라벨
+  - **반응형 패널**: PC(`md:` 이상)은 헤더 우측 드롭다운(`md:absolute md:right-0`, max-h-96 스크롤). 모바일은 전체 화면 모달(`fixed inset-0`, backdrop 포함). 모바일 헤더 드롭다운의 내부 스크롤 ↔ 페이지 스크롤 충돌을 회피하기 위함. 모바일 하단 탭바의 "알림" 탭도 동일 상태 `showAlerts`를 토글한다 (별도 페이지 아님).
+  - 알림 아이콘 + 우선순위별 좌측 강조 border, 아이콘 + 한국어 라벨 (중립적 표현 — `ALERT_TYPE_LABELS` 참조)
   - **각 알림 항목**: 메시지 본문 + 두 개의 액션 버튼 — `[지금 확인하기]`(파란 버튼, 클릭 시 종목 상세 이동 + 패널 닫기) / `[나중에 볼게요]`(텍스트 버튼, 클릭 시 패널만 닫기). 우측 상단 휴지통 버튼은 `stopPropagation`로 알림 단건 삭제 전용.
 - 유저 프로필 → 클릭 시 analysis 페이지 이동
 
@@ -402,24 +409,28 @@ PC/태블릿 (md: 이상):
 ---
 
 ## 온보딩 플로우 (첫 실행 시)
-**localStorage 키 (2개)**:
-- `disclaimer_accepted` — 면책 모달 확인 여부
-- `onboarding_done` — 온보딩 스텝 완료 여부 (스킵 포함)
 
 **플로우**:
-1. **면책 모달** (`disclaimer_accepted`): 원금 손실 위험 강조 → [확인했습니다]
+1. **면책 모달** (`disclaimer_accepted`): 원금 손실 위험 + "이 앱은 정보 제공 도구로, 실제 주식 거래는 지원하지 않아요" 강조 → [확인했습니다]
 2. **온보딩 스텝** (`onboarding_done`): "내 주식을 추가해볼게요" → [건너뛰기] / [직접 추가할게요]
    - [직접 추가할게요] 클릭 시: `navigateTo('analysis', { focus: 'add-holding-search' })` 호출
    - HoldingsAnalysisPage가 마운트 시 `useNavigationStore.consumePendingFocus()` 검사 → 자동으로 종목 추가 폼 노출
-3. **대시보드 도착**: 빈 포트폴리오 CTA 카드는 `onboarding_done` 설정된 **재방문** 시에만 표시 (중복 방지)
+3. **첫 종목 추가 직후 인라인 가이드** (`onboarding_first_stock_guided`): 종목 추가 성공 시 `holdings.length === 0`이고 키가 없으면 토스트 대신 인라인 가이드 카드 1회 표시. "🎉 첫 종목을 추가했어요! [종목 분석 보기 →] [나중에 볼게요]". 키 설정 후에는 일반 토스트(`보러가기` 액션)로 전환.
+4. **대시보드 도착**: 빈 포트폴리오 CTA 카드는 `onboarding_done` 설정된 **재방문** 시에만 표시 (중복 방지)
 
-## 투자 면책 고지 (5곳)
+**localStorage 키 (3개)**:
+- `disclaimer_accepted` — 면책 모달 확인 여부
+- `onboarding_done` — 온보딩 스텝 완료 여부 (스킵 포함)
+- `onboarding_first_stock_guided` — 첫 종목 추가 후 가이드 카드 노출 완료 여부
+
+## 투자 면책 고지 (7곳)
 1. **첫 실행 모달** — `localStorage('disclaimer_accepted')` 1회. 원금 손실 위험 + **"이 앱은 정보 제공 도구로, 실제 주식 거래는 지원하지 않아요. 실제 매수·매도는 증권사 앱에서 직접 진행해 주세요."** 강조
 2. **추천 페이지 상단** — "알고리즘이 분석한 참고 정보예요. 투자 결정은 항상 본인이 직접 판단해주세요." (안내형)
-3. **종목 상세 의견 하단** — "이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다."
-4. **추천 카드 하단** — "투자 참고용이며 투자 권유가 아니에요. 실제 매수는 증권사 앱에서 직접 진행해 주세요."
-5. **HoldingsAnalysisPage 매도/추가매수 뱃지 하단** — "거래는 증권사 앱에서 직접 진행해 주세요" (italic)
-6. **ScoringBreakdownPanel** — "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요."
+3. **종목 상세 종합의견 박스 하단** — "알고리즘 분석 결과로, 이것은 투자 추천이 아니에요. 점수와 의견은 참고용으로만 봐주세요." + market_opinion 뱃지에 📊 힌트 아이콘 병기
+4. **종목 상세 분석 영역 하단** — "이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다."
+5. **추천 카드 하단** — "투자 참고용이며 투자 권유가 아니에요. 실제 매수는 증권사 앱에서 직접 진행해 주세요."
+6. **HoldingsAnalysisPage "주의 필요"/"추가 검토" 뱃지 하단** — "이 신호는 참고용이에요. 판단은 본인이 해주세요. 실제 거래는 증권사 앱에서 직접 진행해 주세요." (italic)
+7. **ScoringBreakdownPanel 상단** — 종합점수 바로 아래에 "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요." (스코어를 보기 전에 맥락을 먼저 이해하도록 패널 상단 배치)
 
 ## 데이터 표시 원칙
 - **갱신 시각**: `src/utils/dataFreshness.ts`의 공용 함수
@@ -471,12 +482,19 @@ HoldingOpinion (보유 기준, 별도 뱃지):
   알고리즘:             bg-blue-500/10 text-blue-400 + 탭/클릭 시 accordion 펼침
                        (accordion 콘텐츠: reason 텍스트 + "10가지 지표를 자동 분석한 결과예요. 과거 성과가 미래를 보장하지 않아요.")
 
-알림 뱃지 (ALERT_TYPE_LABELS):
-  sell_signal:  🔴 매도 신호    (priority: high, border-l-red-500/50)
-  sma5_break:   📉 단기 하락    (priority: medium)
-  sma5_touch:   💡 매수 타이밍  (priority: medium)
-  target_near:  🎯 목표가 근접  (priority: high, border-l-red-500/50)
-  undervalued:  💎 저평가 신호  (priority: low)
+알림 뱃지 (ALERT_TYPE_LABELS — 중립적 표현으로 통일, code 상수는 그대로):
+  sell_signal:  🔴 가격 하락 경고     (priority: high, border-l-red-500/50)
+  sma5_break:   📉 단기 하락 알림     (priority: medium)
+  sma5_touch:   💡 가격 지지 알림     (priority: medium)
+  target_near:  🎯 목표가 근접 알림   (priority: high, border-l-red-500/50)
+  undervalued:  💎 저평가 분석 결과   (priority: low)
+
+HoldingOpinion 표시 라벨 (badge에서만 변환, 내부 값은 알고리즘과 호환):
+  보유          → "보유"      (그대로)
+  추가매수      → "추가 검토" (명령어 → 검토 권유)
+  관망          → "관망"      (그대로)
+  매도          → "주의 필요" (명령어 → 상태 설명)
+  ※ 매도/추가 검토 뱃지 하단에는 "이 신호는 참고용이에요. 판단은 본인이 해주세요. 실제 거래는 증권사 앱에서 직접 진행해 주세요." italic 안내 추가
 ```
 
 ### 컬러 팔레트 (다크 테마)

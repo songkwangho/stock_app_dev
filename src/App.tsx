@@ -19,12 +19,14 @@ const StockDetailView = lazy(() => import('./components/StockDetailView'));
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'));
 const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
 
+// 알림 type 코드는 그대로 두고, 사용자에게 표시되는 한국어 라벨만 중립적 표현으로 통일.
+// 앱스토어 심사에서 투자 권고로 해석될 여지를 줄이기 위함 — "신호/타이밍" → "경고/알림".
 const ALERT_TYPE_LABELS: Record<string, { label: string; icon: string; color: string; priority: string }> = {
-  sell_signal: { label: '매도 신호', icon: '🔴', color: 'text-red-400 bg-red-500/10', priority: 'high' },
-  sma5_break: { label: '단기 하락', icon: '📉', color: 'text-red-400 bg-red-500/10', priority: 'medium' },
-  sma5_touch: { label: '매수 타이밍', icon: '💡', color: 'text-emerald-400 bg-emerald-500/10', priority: 'medium' },
-  target_near: { label: '목표가 근접', icon: '🎯', color: 'text-yellow-400 bg-yellow-500/10', priority: 'high' },
-  undervalued: { label: '저평가 신호', icon: '💎', color: 'text-blue-400 bg-blue-500/10', priority: 'low' },
+  sell_signal: { label: '가격 하락 경고', icon: '🔴', color: 'text-red-400 bg-red-500/10', priority: 'high' },
+  sma5_break: { label: '단기 하락 알림', icon: '📉', color: 'text-red-400 bg-red-500/10', priority: 'medium' },
+  sma5_touch: { label: '가격 지지 알림', icon: '💡', color: 'text-emerald-400 bg-emerald-500/10', priority: 'medium' },
+  target_near: { label: '목표가 근접 알림', icon: '🎯', color: 'text-yellow-400 bg-yellow-500/10', priority: 'high' },
+  undervalued: { label: '저평가 분석 결과', icon: '💎', color: 'text-blue-400 bg-blue-500/10', priority: 'low' },
 };
 
 const App = () => {
@@ -225,16 +227,21 @@ const App = () => {
                 )}
               </button>
 
-              {/* Alerts Panel */}
+              {/* Alerts Panel
+                  - PC(md: 이상): 헤더 우측 드롭다운 (max-h-96 스크롤)
+                  - 모바일(md: 미만): 전체 화면 모달 (헤더 드롭다운의 스크롤 충돌 방지) */}
               {showAlerts && (
-                <div className="absolute top-full right-0 mt-2 w-[400px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50">
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
-                    <h4 className="text-sm font-bold">알림</h4>
-                    <button onClick={() => setShowAlerts(false)} className="text-slate-500 hover:text-white">
-                      <X size={16} />
+                <>
+                  {/* Mobile backdrop */}
+                  <div className="md:hidden fixed inset-0 bg-black/60 z-40" onClick={() => setShowAlerts(false)} />
+                  <div className="fixed inset-0 z-50 flex flex-col bg-slate-900 md:absolute md:inset-auto md:top-full md:right-0 md:mt-2 md:w-[400px] md:max-h-[80vh] md:bg-slate-900 md:border md:border-slate-800 md:rounded-2xl md:shadow-2xl md:overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+                    <h4 className="text-base md:text-sm font-bold">알림</h4>
+                    <button onClick={() => setShowAlerts(false)} className="text-slate-500 hover:text-white p-2 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="알림 닫기">
+                      <X size={20} />
                     </button>
                   </div>
-                  <div className="max-h-96 overflow-auto">
+                  <div className="flex-1 overflow-auto md:max-h-96">
                     {alerts.length === 0 ? (
                       <div className="p-8 text-center">
                         <p className="text-2xl mb-2">🔔</p>
@@ -292,6 +299,7 @@ const App = () => {
                     )}
                   </div>
                 </div>
+                </>
               )}
             </div>
             <div className="h-6 w-px bg-slate-800"></div>
