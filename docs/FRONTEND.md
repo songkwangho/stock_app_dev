@@ -57,7 +57,8 @@ axios.interceptors.request.use((config) => {
 
 ---
 
-## 상태관리 (Zustand — 도메인별 4개 스토어 + Toast)
+## 상태관리 (Zustand — 5개 스토어)
+도메인별 4개 + Toast 1개. 컴포넌트는 필요한 스토어만 import (관심사 분리). `navigateTo`는 `useNavigationStore`에서만 호출 (App.tsx에서 props로 내려주지 않음).
 
 ### useNavigationStore (`src/stores/useNavigationStore.ts`)
 **관심사**: UI 탐색 상태 (도메인 데이터 없음)
@@ -66,15 +67,18 @@ axios.interceptors.request.use((config) => {
 interface NavigationState {
   activeTab: string;
   selectedStock: StockSummary | null;
-  previousTab: string;  // 상세뷰 뒤로가기 시 복귀 탭
+  previousTab: string;        // 상세뷰 뒤로가기 시 복귀 탭
+  pendingFocus: string | null; // 페이지 진입 시 자동 트리거할 포커스 식별자
 }
 
 interface NavigationActions {
-  navigateTo(tab: string): void;           // 탭 이동 + selectedStock 초기화
-  handleDetailClick(stock: StockSummary): void; // 종목 선택 + detail 탭 이동
-  goBack(): void;                          // previousTab으로 복귀
+  navigateTo(tab: string, options?: { focus?: string }): void; // 탭 이동 + selectedStock 초기화 + pendingFocus 설정
+  handleDetailClick(stock: StockSummary): void;                // 종목 선택 + detail 탭 이동
+  goBack(): void;                                              // previousTab으로 복귀
+  consumePendingFocus(): string | null;                        // pendingFocus 읽고 즉시 비움
 }
 ```
+> **pendingFocus 패턴**: 현재는 온보딩 "직접 추가할게요" → HoldingsAnalysisPage 검색 폼 자동 노출 케이스 한 곳에서만 사용한다(`'add-holding-search'`). 일반화 여지는 있으나(예: 알림 → 종목 상세 진입 시 특정 섹션 스크롤), 사용처가 늘어나기 전까지는 이 단순 형태를 유지한다.
 
 ### usePortfolioStore (`src/stores/usePortfolioStore.ts`)
 **관심사**: 보유종목 도메인 상태
@@ -124,11 +128,14 @@ interface WatchlistState {
 interface WatchlistActions {
   fetchWatchlist(force?: boolean): Promise<void>;  // TTL 30초 이내 재호출 스킵
   addToWatchlist(code: string): Promise<void>;     // 내부적으로 force 호출
-  removeFromWatchlist(code: string): Promise<void>; // optimistic + 실패 시 force 롤백
+  removeFromWatchlist(code: string): Promise<void>; // optimistic + 실패 시 즉시 롤백 + 토스트
 }
 ```
 > **중복 호출 방지**: WatchlistPage와 HoldingsAnalysisPage 탭이 동시에 마운트될 때
 > 30초 TTL로 두 번째 호출을 스킵 (불필요한 API 호출 방지). add/remove 시에만 강제 갱신.
+> **삭제 실패 처리**: optimistic update로 즉시 항목을 제거한 뒤, API 실패 시 이전 배열로 되돌리고
+> `useToastStore.addToast('관심종목 삭제에 실패했어요. 다시 시도해 주세요.', 'error')`로 사용자에게 알린다.
+> 단순 재출현은 사용자에게 혼란을 주므로, 반드시 토스트와 함께 롤백한다.
 
 ### 스토어 사용 원칙
 - 컴포넌트는 필요한 스토어만 import (관심사 분리)
@@ -243,7 +250,7 @@ interface WatchlistActions {
 
 ### ScoringBreakdownPanel (스코어 시각화)
 - **Props**: `breakdown: ScoringBreakdown`
-- **기능**: 종합점수 /10 표시, 밸류에이션/기술지표/수급/추세 각각 게이지 바 + 한국어 설명, `per_negative`/`low_confidence` 경고 플래그
+- **기능**: 종합점수 /10 표시 + "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요." 면책 문구. 밸류에이션/기술지표/수급/추세 각각 게이지 바 + `value/max` 점수 텍스트 병기 (색각이상 사용자 대응) + 한국어 설명. `per_negative`/`low_confidence` 경고 플래그.
 
 ### StockSearchInput (종목 검색)
 - **Props**: `placeholder?`, `onSelect`, `resetKey?`, `className?`
@@ -382,8 +389,9 @@ PC/태블릿 (md: 이상):
 - 시장지수 (KOSPI/KOSDAQ)
 - 글로벌 검색바 (디바운스 300ms, 모바일에서 full-width)
 - 알림 벨 (미읽은 수 뱃지) — `useAlertStore.unreadCount`
+  - 알림 패널은 헤더 드롭다운 형태 (`absolute top-full right-0`, max-h-96 스크롤). 모바일 하단 탭바의 "알림" 탭도 동일한 패널을 토글한다 (별도 페이지 아님, 상태 `showAlerts`만 공유).
   - 알림 아이콘 + 우선순위별 좌측 강조 border, 아이콘 + 한국어 라벨
-  - **알림 항목 탭 시**: `handleDetailClick({ code, name })`로 종목 상세 이동 + 알림 패널 닫기. 삭제 버튼은 stopPropagation로 분리
+  - **각 알림 항목**: 메시지 본문 + 두 개의 액션 버튼 — `[지금 확인하기]`(파란 버튼, 클릭 시 종목 상세 이동 + 패널 닫기) / `[나중에 볼게요]`(텍스트 버튼, 클릭 시 패널만 닫기). 우측 상단 휴지통 버튼은 `stopPropagation`로 알림 단건 삭제 전용.
 - 유저 프로필 → 클릭 시 analysis 페이지 이동
 
 ### 상세뷰 네비게이션
@@ -405,16 +413,19 @@ PC/태블릿 (md: 이상):
    - HoldingsAnalysisPage가 마운트 시 `useNavigationStore.consumePendingFocus()` 검사 → 자동으로 종목 추가 폼 노출
 3. **대시보드 도착**: 빈 포트폴리오 CTA 카드는 `onboarding_done` 설정된 **재방문** 시에만 표시 (중복 방지)
 
-## 투자 면책 고지 (3곳)
-1. **첫 실행 모달** — `localStorage('disclaimer_accepted')` 1회. 원금 손실 위험 강조
+## 투자 면책 고지 (5곳)
+1. **첫 실행 모달** — `localStorage('disclaimer_accepted')` 1회. 원금 손실 위험 + **"이 앱은 정보 제공 도구로, 실제 주식 거래는 지원하지 않아요. 실제 매수·매도는 증권사 앱에서 직접 진행해 주세요."** 강조
 2. **추천 페이지 상단** — "알고리즘이 분석한 참고 정보예요. 투자 결정은 항상 본인이 직접 판단해주세요." (안내형)
 3. **종목 상세 의견 하단** — "이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다."
-4. **추천 카드 하단** — "투자 참고용이며 투자 권유가 아닙니다."
+4. **추천 카드 하단** — "투자 참고용이며 투자 권유가 아니에요. 실제 매수는 증권사 앱에서 직접 진행해 주세요."
+5. **HoldingsAnalysisPage 매도/추가매수 뱃지 하단** — "거래는 증권사 앱에서 직접 진행해 주세요" (italic)
+6. **ScoringBreakdownPanel** — "10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요."
 
 ## 데이터 표시 원칙
 - **갱신 시각**: `src/utils/dataFreshness.ts`의 공용 함수
-  - `getDataFreshnessLabel(lastUpdated)`: "N분 전 (HH:MM, 장중 데이터/전일 종가)" — 종목 상세
-  - `getDataFreshnessShort(lastUpdated)`: "N분 전" — 대시보드
+  - `getDataFreshnessLabel(lastUpdated: string)`: "N분 전 (HH:MM, 장중 데이터/전일 종가)" — 종목 상세
+  - `getDataFreshnessShort(lastUpdated: string)`: "N분 전" — 대시보드
+  - **lastUpdated 입력 형식**: SQLite `CURRENT_TIMESTAMP` (UTC `"YYYY-MM-DD HH:MM:SS"`) 또는 ISO 8601 (`Z` 포함). 두 함수 모두 내부의 `parseServerDate()`를 통해 SQLite 형식을 명시적으로 UTC로 해석한다 (그렇지 않으면 `new Date()`가 로컬 시간대로 해석해 KST와 9시간 오차 발생). KST와의 변환은 `Asia/Seoul` 타임존을 명시적으로 사용.
   - 장 운영시간(KST 평일 9~16시) 자동 판단. **클라이언트 시간대와 무관** (KST 고정 변환)
   - **알려진 제약**: 공휴일(광복절 등)에는 평일 휴장이지만 "장중 데이터"로 오표시 가능. 향후 공휴일 캘린더 통합 시 해소
 - **재무지표 비교 기준**: 업종 **중앙값**(medians) 기준. 스코어링 알고리즘과 동일 기준 사용
@@ -455,8 +466,10 @@ HoldingOpinion (보유 기준, 별도 뱃지):
   매도:     bg-red-500/10 text-red-400
 
 추천 source 뱃지:
-  전문가 선정 (manual): bg-purple-500/10 text-purple-400 + tooltip "전문가가 직접 선정한 종목이에요"
-  알고리즘:             bg-blue-500/10 text-blue-400 + tooltip "10가지 지표로 자동 분석한 종목이에요"
+  전문가 선정 (manual): bg-purple-500/10 text-purple-400 + 탭/클릭 시 accordion 펼침
+                       (accordion 콘텐츠: reason 텍스트 + "전문가가 직접 분석하여 선정한 종목이에요. 투자 결정은 본인이 하세요.")
+  알고리즘:             bg-blue-500/10 text-blue-400 + 탭/클릭 시 accordion 펼침
+                       (accordion 콘텐츠: reason 텍스트 + "10가지 지표를 자동 분석한 결과예요. 과거 성과가 미래를 보장하지 않아요.")
 
 알림 뱃지 (ALERT_TYPE_LABELS):
   sell_signal:  🔴 매도 신호    (priority: high, border-l-red-500/50)

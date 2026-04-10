@@ -153,6 +153,9 @@ const initialRecommendations = [
 ];
 
 // ON CONFLICT 동작 의도:
+// ⚠️ 서버 재시작마다 reason/score는 코드 내 값으로 초기화됩니다.
+// DB에서 직접 reason/score를 수정해도 다음 재시작 시 사라집니다.
+// 영구 수정이 필요하면 이 파일의 initialRecommendations 배열을 직접 수정하세요.
 // - reason, score: 서버 재시작마다 코드 내 최신 값으로 덮어씌움 (운영자가 코드에서 관리)
 // - fair_price: 최초 등록 후 고정 (DB 값 유지, 시세 변동과 무관)
 // - source: 기존 DB 값 우선 유지 (알고리즘으로 변경된 경우 보존)

@@ -59,7 +59,7 @@ const ScoringBreakdownPanel = ({ breakdown }: ScoringBreakdownPanelProps) => {
 
   return (
     <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">종합점수</p>
         <div className="flex items-center space-x-2">
           <span className={`text-2xl font-black ${scoreColor}`}>{total}</span>
@@ -71,6 +71,7 @@ const ScoringBreakdownPanel = ({ breakdown }: ScoringBreakdownPanelProps) => {
           }`}>{scoreLabel}</span>
         </div>
       </div>
+      <p className="text-xs text-slate-500 mb-4 leading-relaxed">10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요.</p>
 
       {/* Score Bars */}
       <div className="space-y-3">

@@ -32,7 +32,8 @@
       "Bash(taskkill //PID 58436 //F)",
       "Bash(taskkill //PID 59152 //F)",
       "Bash(sqlite3 stocks.db \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")",
-      "Bash(sqlite3 \"c:/Users/aistudio/Documents/stock_app_dev/stocks.db\" \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")"
+      "Bash(sqlite3 \"c:/Users/aistudio/Documents/stock_app_dev/stocks.db\" \"SELECT device_id, code, avg_price, quantity, weight FROM holding_stocks;\")",
+      "Bash(node -e ':*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

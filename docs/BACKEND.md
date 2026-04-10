@@ -1,7 +1,7 @@
 # Backend Documentation
 
 ## 개요
-- **진입점**: `server/server.js` (~880줄, 라우트 28개) + `server/index.js` (래퍼)
+- **진입점**: `server/server.js` (~80줄 — 컴포지션 루트, 5개 도메인 라우터 마운트) + `server/index.js` (래퍼)
 - **포트**: 3001
 - **DB**: SQLite3 (better-sqlite3, 동기식) → PostgreSQL 전환 예정
 - **보안**: CORS 화이트리스트 + express-rate-limit (device_id 기준 120req/min)
@@ -9,7 +9,7 @@
 ### 디렉토리 구조
 ```
 server/
-├── server.js             # 라우트 28개 (~880줄)
+├── server.js             # 컴포지션 루트 (~80줄, 라우트 정의 없음)
 ├── index.js              # 진입점 래퍼
 ├── db/
 │   ├── connection.js     # DB 연결
@@ -24,16 +24,32 @@ server/
 ├── domains/
 │   ├── analysis/
 │   │   ├── scoring.js    # calculate*Score + calculateHoldingOpinion + median
-│   │   └── indicators.js # calculateIndicators (RSI/MACD/볼린저)
+│   │   ├── indicators.js # calculateIndicators (RSI/MACD/볼린저)
+│   │   └── router.js     # 분석 라우터 (indicators/volatility/financials/news/chart/screener/sector — 7 endpoints)
 │   ├── alert/
-│   │   └── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   │   ├── service.js    # generateAlerts + ALERT_COOLDOWNS
+│   │   └── router.js     # 알림 라우터 (4 endpoints)
 │   ├── portfolio/
-│   │   └── service.js    # recalcWeights
+│   │   ├── service.js    # recalcWeights
+│   │   └── router.js     # 포트폴리오 라우터 (5 endpoints, computeSMA helper 포함)
+│   ├── watchlist/
+│   │   └── router.js     # 관심종목 라우터 (3 endpoints)
 │   └── stock/
 │       ├── service.js    # getStockData + syncAllStocks + scheduleDaily8AM
-│       └── data.js       # topStocks (97개) + initialRecommendations (20개)
+│       ├── data.js       # topStocks (97개) + initialRecommendations (20개)
+│       └── router.js     # 종목 라우터 (stock/stocks/search/recommendations/market/health — 9 endpoints)
 └── scheduler.js          # setupScheduler + setupCleanup
 ```
+
+### 라우터 마운트 (server.js)
+```javascript
+app.use('/api/alerts',    alertRouter);     // /api/alerts/*
+app.use('/api/watchlist', watchlistRouter); // /api/watchlist/*
+app.use('/api/holdings',  portfolioRouter); // /api/holdings/*
+app.use('/api',           analysisRouter);  // /stock/:code/{indicators,volatility,...}, /screener, /sector
+app.use('/api',           stockRouter);     // /stock/:code, /stocks, /search, /recommendations, /market, /health
+```
+순서가 중요하다 — `analysisRouter`를 `stockRouter`보다 먼저 마운트해야 `/stock/:code/indicators` 같은 경로가 `/stock/:code` 매칭에 가로채이지 않는다. 각 라우터는 `import db from '../../db/connection.js'`로 DB를 직접 import한다 (의존성 주입 없음 — 단순화 의도).
 
 ---
 
@@ -70,7 +86,7 @@ server/
 ### 포트폴리오 (모든 엔드포인트에 `requireDeviceId` 적용)
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` + `sma_available` 포함). `sma_available=false`면 holding_opinion 신뢰 불가, UI에서 "분석 중" 표시 |
+| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` + `sma_available` 포함). `sma_available=false`면 holding_opinion 신뢰 불가, UI에서 "분석 중" 표시. **`sma_available` 정의**: SMA5 계산 가능 여부 (`stock_history` 5일 이상 존재 → true). SMA20은 별도 판단하며 `holding_opinion` 알고리즘 5단계가 처리한다. |
 | POST | `/api/holdings` | 신규 추가 (UPSERT) |
 | PUT | `/api/holdings/:code` | 부분 수정 (avgPrice, quantity). 미보유 시 404 |
 | DELETE | `/api/holdings/:code` | 삭제 |

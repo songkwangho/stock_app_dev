@@ -124,7 +124,9 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           value={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(2)}%`}
           positive={avgProfitRate >= 0}
           icon={<ArrowUpRight size={24} />}
-          subtitle="투자금액 기준 가중 평균"
+          subtitle={totalCost > 0
+            ? `₩${totalCost.toLocaleString()} → ₩${totalAsset.toLocaleString()} (가중 평균)`
+            : '투자금액 기준 가중 평균'}
         />
       </div>
 

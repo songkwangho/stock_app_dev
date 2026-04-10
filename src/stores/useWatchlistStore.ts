@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { stockApi } from '../api/stockApi';
+import { useToastStore } from './useToastStore';
 import type { WatchlistItem } from '../types/stock';
 
 interface WatchlistState {
@@ -43,11 +44,14 @@ export const useWatchlistStore = create<WatchlistState & WatchlistActions>((set,
   },
 
   removeFromWatchlist: async (code) => {
-    set({ items: get().items.filter(i => i.code !== code) }); // optimistic
+    const previous = get().items;
+    set({ items: previous.filter(i => i.code !== code) }); // optimistic
     try {
       await stockApi.removeFromWatchlist(code);
     } catch {
-      await get().fetchWatchlist(true); // rollback (강제 갱신)
+      // 실패 시 즉시 롤백 + 토스트로 사용자에게 알림 (단순 재출현은 혼란을 줌)
+      set({ items: previous });
+      useToastStore.getState().addToast('관심종목 삭제에 실패했어요. 다시 시도해 주세요.', 'error');
     }
   },
 }));

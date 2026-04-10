@@ -101,7 +101,7 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
           </p>
         </div>
       )}
-      <p className="text-xs text-slate-600 mt-2 leading-relaxed">투자 참고용이며 투자 권유가 아닙니다.</p>
+      <p className="text-xs text-slate-600 mt-2 leading-relaxed">투자 참고용이며 투자 권유가 아니에요. 실제 매수는 증권사 앱에서 직접 진행해 주세요.</p>
     </div>
   );
 };

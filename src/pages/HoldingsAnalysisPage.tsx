@@ -25,7 +25,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [newStock, setNewStock] = useState<{ code: string; name: string } | null>(null);
   const [newForm, setNewForm] = useState({ avgPrice: '', quantity: '' });
   const [searchResetKey, setSearchResetKey] = useState(0);
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string; action?: { label: string; onClick: () => void } } | null>(null);
   const [subTab, setSubTab] = useState<'holdings' | 'watchlist'>('holdings');
 
   // 온보딩에서 진입 시 검색창 자동 노출
@@ -34,22 +34,27 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
     if (focus === 'add-holding-search') setShowAddForm(true);
   }, []);
 
-  const showToast = (type: 'success' | 'error', text: string) => {
-    setToast({ type, text });
-    setTimeout(() => setToast(null), 3000);
+  const showToast = (type: 'success' | 'error', text: string, action?: { label: string; onClick: () => void }) => {
+    setToast({ type, text, action });
+    setTimeout(() => setToast(null), 5000);
   };
 
   const handleAdd = async () => {
     if (!newStock || !newForm.avgPrice) return;
+    const justAdded = newStock;
     try {
       await onAdd({
-        code: newStock.code,
-        name: newStock.name,
+        code: justAdded.code,
+        name: justAdded.name,
         avgPrice: parseInt(newForm.avgPrice),
         quantity: parseInt(newForm.quantity || '0'),
         value: 0,
       });
-      showToast('success', `${newStock.name}이(가) 포트폴리오에 추가되었습니다.`);
+      showToast(
+        'success',
+        `${justAdded.name}을(를) 추가했어요! 🎉 종목 상세에서 분석 결과를 확인해보세요.`,
+        { label: '보러가기', onClick: () => onDetailClick({ ...justAdded, category: '보유 종목' }) },
+      );
       setNewStock(null);
       setNewForm({ avgPrice: '', quantity: '' });
       setSearchResetKey(k => k + 1);
@@ -102,10 +107,18 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl animate-in slide-in-from-right duration-300 ${
+        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl animate-in slide-in-from-right duration-300 max-w-sm ${
           toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'
         }`}>
-          {toast.text}
+          <p className="leading-relaxed">{toast.text}</p>
+          {toast.action && (
+            <button
+              onClick={() => { toast.action!.onClick(); setToast(null); }}
+              className="mt-2 px-3 py-1.5 bg-blue-600/80 hover:bg-blue-500 text-white rounded-lg text-xs font-bold"
+            >
+              {toast.action.label} →
+            </button>
+          )}
         </div>
       )}
 
@@ -300,6 +313,9 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                           : '5일선 위, 이평선 정배열. 상승 흐름 유지 중'}
                       </span>
                       <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline ml-1">상세 보기 →</button>
+                      {(stock.holding_opinion === '매도' || stock.holding_opinion === '추가매수') && (
+                        <span className="block mt-1 font-normal text-[11px] text-slate-500 italic">거래는 증권사 앱에서 직접 진행해 주세요</span>
+                      )}
                     </div>
                   )}
                   {stock.market_opinion && (
