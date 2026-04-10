@@ -6,9 +6,10 @@ interface StatCardProps {
   change?: string;
   positive?: boolean;
   icon: ReactNode;
+  subtitle?: string;
 }
 
-const StatCard = ({ title, value, change, positive, icon }: StatCardProps) => (
+const StatCard = ({ title, value, change, positive, icon, subtitle }: StatCardProps) => (
   <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 hover:border-slate-700 transition-all group">
     <div className="flex items-center justify-between mb-4">
       <div className="p-3 bg-slate-950 rounded-2xl text-blue-400 group-hover:scale-110 transition-transform">
@@ -22,6 +23,7 @@ const StatCard = ({ title, value, change, positive, icon }: StatCardProps) => (
     </div>
     <p className="text-sm text-slate-500 mb-1">{title}</p>
     <p className="text-2xl font-bold">{value}</p>
+    {subtitle && <p className="text-xs text-slate-600 mt-1">{subtitle}</p>}
   </div>
 );
 

@@ -43,7 +43,12 @@ server/
 **holding_stocks**: device_id+code(PK), avg_price, weight, quantity, last_updated — `holding_opinion`은 DB 미저장, API 응답 시 런타임 계산
 **stock_history**: code+date(PK), price, open, high, low, volume
 **stock_analysis**: code(PK), analysis, advice, opinion(MarketOpinion 전용), toss_url, chart_path, created_at
-**recommended_stocks**: code(PK), reason, fair_price(최초 등록 후 고정), score, source(`manual`/`algorithm`), created_at
+**recommended_stocks**: code(PK), reason, fair_price, score, source(`manual`/`algorithm`), created_at
+> **ON CONFLICT 정책 (data.js 시드 시)**: 서버 재시작마다
+> - `reason`/`score`: 코드 값으로 **덮어씀** (운영자가 코드에서 관리)
+> - `fair_price`: **최초 등록 후 고정** (시세와 무관, DB 값 유지)
+> - `source`: `COALESCE`로 기존 값 우선 (algorithm으로 변경된 경우 보존)
+> - DB 직접 수정한 reason/score는 서버 재시작 시 초기화됨 (의도된 동작)
 **investor_history**: code+date(PK), institution, foreign_net, individual
 **alerts**: id(PK), device_id, code, name, type, message, read, created_at
 **watchlist**: device_id+code(PK), added_at
@@ -60,12 +65,12 @@ server/
 | GET | `/api/stocks` | 전체 종목 (`market_opinion` JOIN) |
 | POST | `/api/stocks` | 종목 수동 등록 |
 | DELETE | `/api/stocks/:code` | 종목 삭제 (cascade) |
-| GET | `/api/search?q=` | 검색 (최대 10건) |
+| GET | `/api/search?q=` | 검색 (최대 10건, `market_opinion` LEFT JOIN). 인덱스: stocks/stock_analysis 모두 PK 기반, 97종목 규모에서 풀스캔 무시 가능. 1000+ 시 FTS 검토 |
 
 ### 포트폴리오 (모든 엔드포인트에 `requireDeviceId` 적용)
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` 포함) |
+| GET | `/api/holdings` | 보유종목 (`holding_opinion` + `market_opinion` + `sma_available` 포함). `sma_available=false`면 holding_opinion 신뢰 불가, UI에서 "분석 중" 표시 |
 | POST | `/api/holdings` | 신규 추가 (UPSERT) |
 | PUT | `/api/holdings/:code` | 부분 수정 (avgPrice, quantity). 미보유 시 404 |
 | DELETE | `/api/holdings/:code` | 삭제 |

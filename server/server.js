@@ -132,6 +132,7 @@ app.get('/api/holdings', async (req, res) => {
                 ...h,
                 market_opinion: h.market_opinion || '중립적',
                 holding_opinion: calculateHoldingOpinion(h.avg_price, h.price, sma5, sma20),
+                sma_available: sma5 !== null,
             };
         });
 
@@ -182,6 +183,7 @@ app.post('/api/holdings', async (req, res) => {
             if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
             updated.holding_opinion = calculateHoldingOpinion(updated.avg_price, updated.price, sma5, sma20);
             updated.market_opinion = updated.market_opinion || '중립적';
+            updated.sma_available = sma5 !== null;
         }
         res.json(updated);
     } catch (error) {
@@ -228,6 +230,7 @@ app.put('/api/holdings/:code', async (req, res) => {
             if (history.length >= 20) sma20 = Math.round(history.slice(0, 20).reduce((s, r) => s + r.price, 0) / 20);
             updated.holding_opinion = calculateHoldingOpinion(updated.avg_price, updated.price, sma5, sma20);
             updated.market_opinion = updated.market_opinion || '중립적';
+            updated.sma_available = sma5 !== null;
         }
         res.json(updated);
     } catch (error) {
@@ -275,14 +278,18 @@ app.get('/api/stocks', (req, res) => {
 });
 
 // Search Endpoint
+// 인덱스: stocks.code, stock_analysis.code 모두 PRIMARY KEY (자동 인덱스).
+// LEFT JOIN은 PK 기준이므로 효율적. name/code LIKE 검색은 풀스캔이지만
+// 97종목 규모에서 무시 가능. 종목 수가 1,000개 이상으로 늘어나면 FTS 인덱스 검토.
 app.get('/api/search', (req, res) => {
     const { q } = req.query;
     if (!q) return res.json([]);
     try {
         const results = db.prepare(`
-            SELECT code, name, category
-            FROM stocks
-            WHERE name LIKE ? OR code LIKE ?
+            SELECT s.code, s.name, s.category, a.opinion AS market_opinion
+            FROM stocks s
+            LEFT JOIN stock_analysis a ON s.code = a.code
+            WHERE s.name LIKE ? OR s.code LIKE ?
             LIMIT 10
         `).all(`%${q}%`, `%${q}%`);
         res.json(results);

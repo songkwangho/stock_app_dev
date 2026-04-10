@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle, Eye } from 'lucide-react';
 import StockSearchInput from '../components/StockSearchInput';
+import WatchlistContent from '../components/WatchlistContent';
 import { useNavigationStore } from '../stores/useNavigationStore';
-import { stockApi } from '../api/stockApi';
-import type { Holding, StockSummary, WatchlistItem } from '../types/stock';
+import type { Holding, StockSummary } from '../types/stock';
 
 interface HoldingsAnalysisPageProps {
   holdings: Holding[];
@@ -27,13 +27,12 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [searchResetKey, setSearchResetKey] = useState(0);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [subTab, setSubTab] = useState<'holdings' | 'watchlist'>('holdings');
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
 
+  // 온보딩에서 진입 시 검색창 자동 노출
   useEffect(() => {
-    if (subTab === 'watchlist') {
-      stockApi.getWatchlist().then(setWatchlist).catch(() => {});
-    }
-  }, [subTab]);
+    const focus = useNavigationStore.getState().consumePendingFocus();
+    if (focus === 'add-holding-search') setShowAddForm(true);
+  }, []);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -136,47 +135,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
       </div>
 
       {subTab === 'watchlist' && (
-        <div className="space-y-4">
-          <StockSearchInput
-            placeholder="관심종목 추가 (종목명/코드 검색)"
-            onSelect={async (s) => {
-              try { await stockApi.addToWatchlist(s.code); setWatchlist(await stockApi.getWatchlist()); } catch {}
-            }}
-            resetKey={searchResetKey}
-          />
-          {watchlist.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {watchlist.map(item => (
-                <div key={item.code} className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 flex items-center justify-between group">
-                  <div className="cursor-pointer" onClick={() => onDetailClick({ code: item.code, name: item.name, category: item.category })}>
-                    <p className="font-bold group-hover:text-blue-400 transition-colors">{item.name}</p>
-                    <p className="text-xs text-slate-500 font-mono">{item.code}</p>
-                    <p className="text-sm font-bold mt-1">₩{item.price?.toLocaleString() || '---'}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {item.market_opinion && (
-                      <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
-                        item.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-400' :
-                        item.market_opinion === '부정적' ? 'bg-red-500/10 text-red-400' : 'bg-slate-500/10 text-slate-400'
-                      }`}>{item.market_opinion}</span>
-                    )}
-                    <button onClick={async () => {
-                      try { await stockApi.removeFromWatchlist(item.code); setWatchlist(w => w.filter(x => x.code !== item.code)); } catch {}
-                    }} className="p-2 text-red-400/60 hover:text-red-400 min-w-[44px] min-h-[44px] flex items-center justify-center">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
-              <p className="text-3xl mb-4">👀</p>
-              <p className="text-slate-300 font-bold text-lg mb-2">관심 종목이 없어요</p>
-              <p className="text-slate-500 text-sm">마음에 드는 종목을 추가하면 한 곳에서 볼 수 있어요</p>
-            </div>
-          )}
-        </div>
+        <WatchlistContent onDetailClick={onDetailClick} />
       )}
 
       {subTab === 'holdings' && <>
@@ -299,15 +258,18 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     parseFloat(profitRate) >= -7 ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
-                    {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 일부 익절도 고려해 보세요' :
+                    {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 🎉' :
                      parseFloat(profitRate) >= 10 ? '잘 하고 계세요! 추세를 유지해 보세요' :
                      parseFloat(profitRate) >= 0 ? '소폭 수익 중이에요. 지켜보세요' :
-                     parseFloat(profitRate) >= -3 ? '소폭 손실이에요. 장기적으로 여유를 가져보세요' :
+                     parseFloat(profitRate) >= -3 ? '소폭 손실이에요. 주식은 단기 등락이 있어요. 조금 더 지켜볼까요?' :
                      parseFloat(profitRate) >= -7 ? '손실이 커지고 있어요. 손절 기준(-7%)에 근접했어요' :
-                     '손절 기준에 도달했어요. 추가 손실 전 결정이 필요해요'}
+                     '손실이 커지고 있어요 🔴'}
                   </p>
-                  {(parseFloat(profitRate) >= 20 || parseFloat(profitRate) <= -7) && (
-                    <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">종목 분석 →</button>
+                  {parseFloat(profitRate) >= 20 && (
+                    <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">일부 팔아볼까요? [종목 보기 →]</button>
+                  )}
+                  {parseFloat(profitRate) <= -7 && (
+                    <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">지금 확인해보세요 [종목 보기 →]</button>
                   )}
                 </div>
               </div>
@@ -315,7 +277,12 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               {/* Opinion Badges */}
               {(stock.holding_opinion || stock.market_opinion) && (
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {stock.holding_opinion && (
+                  {stock.holding_opinion && stock.sma_available === false ? (
+                    <div className="text-xs font-bold px-2.5 py-1.5 rounded-lg border bg-slate-500/10 text-slate-400 border-slate-500/20">
+                      분석 중
+                      <span className="font-normal text-slate-500 ml-1">이평선 데이터를 수집 중이에요. 잠시 후 다시 확인해보세요.</span>
+                    </div>
+                  ) : stock.holding_opinion && (
                     <div className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
                       stock.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
                       stock.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :

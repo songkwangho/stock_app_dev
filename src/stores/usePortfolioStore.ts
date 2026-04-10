@@ -33,6 +33,7 @@ export const usePortfolioStore = create<PortfolioState & PortfolioActions>((set,
         quantity: (h.quantity as number) || 0,
         holding_opinion: (h.holding_opinion as HoldingOpinion) || undefined,
         market_opinion: (h.market_opinion as MarketOpinion) || undefined,
+        sma_available: h.sma_available as boolean | undefined,
       }));
       set({ holdings: mappedHoldings, isLoading: false });
     } catch (error) {

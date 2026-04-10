@@ -57,7 +57,7 @@ axios.interceptors.request.use((config) => {
 
 ---
 
-## 상태관리 (Zustand — 도메인별 3개 스토어 + Toast)
+## 상태관리 (Zustand — 도메인별 4개 스토어 + Toast)
 
 ### useNavigationStore (`src/stores/useNavigationStore.ts`)
 **관심사**: UI 탐색 상태 (도메인 데이터 없음)
@@ -111,6 +111,25 @@ interface AlertActions {
 }
 ```
 
+### useWatchlistStore (`src/stores/useWatchlistStore.ts`)
+**관심사**: 관심종목 상태 (WatchlistPage + HoldingsAnalysisPage 탭이 공유)
+
+```typescript
+interface WatchlistState {
+  items: WatchlistItem[];
+  isLoading: boolean;
+  lastFetched: number;  // TTL 캐시 타임스탬프
+}
+
+interface WatchlistActions {
+  fetchWatchlist(force?: boolean): Promise<void>;  // TTL 30초 이내 재호출 스킵
+  addToWatchlist(code: string): Promise<void>;     // 내부적으로 force 호출
+  removeFromWatchlist(code: string): Promise<void>; // optimistic + 실패 시 force 롤백
+}
+```
+> **중복 호출 방지**: WatchlistPage와 HoldingsAnalysisPage 탭이 동시에 마운트될 때
+> 30초 TTL로 두 번째 호출을 스킵 (불필요한 API 호출 방지). add/remove 시에만 강제 갱신.
+
 ### 스토어 사용 원칙
 - 컴포넌트는 필요한 스토어만 import (관심사 분리)
 - Props drilling 대신 컴포넌트에서 직접 스토어 구독
@@ -123,45 +142,64 @@ interface AlertActions {
 ### DashboardPage
 - **경로**: `activeTab === 'dashboard'`
 - **스토어**: `useNavigationStore`, `usePortfolioStore`
-- **기능**: 포트폴리오 요약 (총자산, 수익률, 종목수), 수익률 추이 AreaChart (20일), 자산배분 PieChart, 보유종목 리스트 (읽기전용, "포트폴리오 관리" 링크로 analysis 페이지 이동)
+- **기능**: 포트폴리오 요약 (총자산, 수익률, 종목수), 수익률 추이 AreaChart (20일), 자산배분 PieChart, 보유종목 리스트 (읽기전용)
+- **빈 포트폴리오 CTA**: 온보딩 완료 후 재방문 시에만 "종목 추가하기/추천 종목 둘러보기" 카드 표시
+- **데이터 갱신 시각**: 상단에 `getDataFreshnessShort()` 기반 "마지막 업데이트: N분 전"
+- **수익률 카드**: "투자금액 기준 가중 평균" subtitle 표시
+- **전체 종목 보기 카드**: 페이지 하단에 MajorStocksPage 진입 카드 (모바일 사용자 접근성 보완)
 - **API 호출**: `stockApi.getHoldingsHistory()`
 
 ### HoldingsAnalysisPage (내 종목 관리)
 - **경로**: `activeTab === 'analysis'`
 - **스토어**: `useNavigationStore`, `usePortfolioStore`
-- **기능**: "보유종목/관심종목" 상단 탭 전환 (모바일 관심종목 접근 경로). 보유종목: 추가/수정/삭제, 요약 통계, 인라인 편집. 관심종목: 검색 추가/삭제, market_opinion 뱃지
+- **기능**: "보유종목/관심종목" 상단 탭 전환 (모바일 관심종목 접근 경로)
+  - 보유종목 탭: 추가/수정/삭제, 요약 통계, 인라인 편집
+  - 관심종목 탭: `WatchlistContent` 컴포넌트 마운트
 - **표시**:
-  - `holding_opinion` 뱃지 + 구체적 이유 텍스트:
+  - **sma_available === false** → "분석 중" 뱃지 (slate, 중립) + "이평선 데이터를 수집 중이에요. 잠시 후 다시 확인해보세요."
+  - **sma_available === true** → `holding_opinion` 뱃지 + 구체적 이유 + "상세 보기 →":
     - 매도(손절): "평단가 대비 -8.2% 손실. 손절 기준(-7%) 초과"
     - 매도(이탈): "5일선·20일선 모두 이탈. 하락세가 강해요"
     - 관망: "5일선 아래지만 20일선이 지지 중. 조금 기다려봐요"
     - 추가매수: "5일선 근처에서 지지받고 있어요"
     - 보유: "5일선 위, 이평선 정배열. 상승 흐름 유지 중"
   - `market_opinion` 뱃지 (시장: 긍정적/중립적/부정적)
-  - 수익률 6구간 메시지 (색상별 구분):
-    ≥20% "목표 수익 달성! 익절 고려" / ≥10% "잘 하고 계세요!" / ≥0% "소폭 수익 중" /
-    ≥-3% "소폭 손실, 여유를" / ≥-7% "손절 기준 근접" / <-7% "손절 기준 도달"
-- **컴포넌트 의존**: `StockSearchInput`
+  - 수익률 6구간 메시지 (색상별 구분, 안내형):
+    ≥20% "목표 수익 달성! 🎉" + "일부 팔아볼까요? [종목 보기 →]"
+    ≥10% "잘 하고 계세요! 추세를 유지해 보세요"
+    ≥0% "소폭 수익 중이에요. 지켜보세요"
+    ≥-3% "소폭 손실이에요. 주식은 단기 등락이 있어요. 조금 더 지켜볼까요?"
+    ≥-7% "손실이 커지고 있어요. 손절 기준(-7%)에 근접했어요"
+    <-7% "손실이 커지고 있어요 🔴" + "지금 확인해보세요 [종목 보기 →]"
+- **Empty State (보유종목 탭)**: 📊 + "종목 추가하기" / "추천 종목 보기" 보조 버튼
+- **Empty State (관심종목 탭)**: WatchlistContent 내 👀 + 안내 (별도 디자인)
+- **온보딩 진입**: `consumePendingFocus() === 'add-holding-search'`이면 자동으로 종목 추가 폼 노출
+- **컴포넌트 의존**: `StockSearchInput`, `WatchlistContent`
 
 ### RecommendationsPage (유망 종목 추천)
 - **경로**: `activeTab === 'recommendations'`
 - **스토어**: `useNavigationStore`
-- **기능**: 추천 종목 그리드, 카테고리 탭 필터링, 요약 통계 (추천수, 섹터수, 평균점수), `source` 배지 표시 ('수동 추천' / '알고리즘'), 새로고침 버튼
+- **기능**: 추천 종목 그리드, 카테고리 탭 필터링, 요약 통계 (추천수, 섹터수, 평균점수), `source` 배지 ('전문가 선정' / '알고리즘'), 새로고침 버튼
+- **면책 고지**: 페이지 상단 안내형 문구 ("알고리즘이 분석한 참고 정보예요...")
+- **모바일 진입점**: 페이지 하단 `md:hidden` "전체 종목 보기" 버튼 → MajorStocksPage 이동
 - **API 호출**: `stockApi.getRecommendations()`
 - **컴포넌트 의존**: `RecommendedStockCard`
 
-### WatchlistPage (관심종목)
-- **경로**: `activeTab === 'watchlist'`
-- **스토어**: `useNavigationStore`
-- **기능**: 관심종목 추가/삭제, 카드 그리드 (카테고리, 가격, market_opinion)
-- **API 호출**: `stockApi.getWatchlist()`, `addToWatchlist()`, `removeFromWatchlist()`
-- **컴포넌트 의존**: `StockSearchInput`
+### WatchlistPage (관심종목 — PC 사이드바 전용)
+- **경로**: `activeTab === 'watchlist'` (PC 사이드바에서만 접근, 모바일은 HoldingsAnalysisPage 탭으로 접근)
+- **기능**: 페이지 헤더 + `WatchlistContent` 컴포넌트 마운트 (얇은 wrapper, ~20줄)
+- **컴포넌트 의존**: `WatchlistContent`
 
-### ScreenerPage (종목 스크리너)
+### ScreenerPage (종목 스크리너 — PC 사이드바 전용)
 - **경로**: `activeTab === 'screener'`
 - **스토어**: `useNavigationStore`
-- **기능**: 프리셋 필터 4종 (저평가 우량주, 안전한 자산주, 고수익 성장주, 소액 투자), 고급 필터 (PER/PBR/ROE/가격/업종), 결과 테이블 (PER/PBR/ROE 색상 강조)
-- **표시**: PER 음수 종목에 '적자' 뱃지 표시, `low_confidence` 플래그 시 섹터 비교 수치에 주의 표시
+- **기능**: 프리셋 필터 4종 (조건 요약 + 설명):
+  - 💎 저평가 우량주 (`PER < 15 + ROE > 10%`) → 싸면서 잘 버는 기업
+  - 🛡️ 안전한 자산주 (`PBR ≤ 1`) → 자산 대비 저평가
+  - 🚀 고수익 성장주 (`ROE ≥ 20%`) → 돈을 아주 잘 버는 기업
+  - 💰 소액 투자 (`주가 ≤ 10만원`) → 적은 금액으로 시작
+- 고급 필터 (PER/PBR/ROE/가격/업종), 결과 테이블 (PER/PBR/ROE 색상 강조)
+- PER 음수 종목에 '적자' 뱃지 표시
 - **API 호출**: `stockApi.screener(filters)`
 
 ### MajorStocksPage (주요 종목 현황)
@@ -176,10 +214,15 @@ interface AlertActions {
 
 ---
 
-## 컴포넌트 (6개)
+## 컴포넌트 (8개)
 
 ### StockDetailView (종목 상세 분석)
 - **Props**: `stock: StockSummary`, `onBack`, `onAdd`, `onUpdate?`
+- **데이터 로딩**: 2단계 우선순위 분리
+  - Phase 1 (await): 가격, 변동성, 기술지표 — 실패 시 catch에서 콘솔 로그 + 로딩 종료
+  - Phase 2 (fire-and-forget): 뉴스(스켈레톤), 재무, 섹터 비교
+  - **Phase 2 에러 처리**: 각 호출에 `.catch(() => {})` 적용. 실패 시 조용히 빈 값 유지 (에러 UI 표시 안 함, 재시도 없음)
+  - 뉴스는 `null` 초기값으로 로딩/없음 구분 → 로딩 중 스켈레톤, 빈 배열이면 미표시
 - **기능**:
   - 차트 타입 토글: 라인 차트(기본, 초보자 친화) / 캔들 차트 전환 버튼
   - SMA5/SMA20 이평선 오버레이, 일봉/주봉/월봉 전환
@@ -187,15 +230,14 @@ interface AlertActions {
   - 거래량 바차트 (상승=초록, 하락=빨강)
   - 투자자 매매동향 (기관/외국인/개인)
   - 기술지표 (RSI, MACD, 볼린저밴드) + 도움말 텍스트 기본 노출
-  - PER/PBR/ROE/목표가 지표 카드 — 각각 컨텍스트 설명 병기:
-    - PER: 적자 표시, 업종 대비 저렴/적정/고평가 해석
-    - PBR: 자산 대비 저평가/적정/비싼 편 해석
-    - ROE: "자기자본으로 N%를 벌었어요" + 우량 기업 판단
-    - 목표가: 현재가 대비 상승여력 % 표시
-  - `ScoringBreakdownPanel`: 10점 스코어를 4개 영역 게이지 바 + 한국어 해석으로 시각화
-  - 분기 재무제표 테이블, 섹터 내 비교 테이블, 최근 뉴스 10건
+  - PER/PBR/ROE 카드 + 기술지표 (RSI/MACD/볼린저밴드) + 투자자 매매동향: 각 영역에 [?] 버튼 → `HelpBottomSheet`로 8개 용어 설명 (PER/PBR/ROE/RSI/MACD/Bollinger/SupplyDemand/SMA)
+  - PER/PBR/ROE/목표가 컨텍스트 설명 병기 (적자/저렴/적정/고평가, 우량 기업 판단 등)
+  - `ScoringBreakdownPanel`: 10점 스코어 4개 영역 게이지 바 + 만점대비 비율(80/60/25%) 해석
+  - 섹터 비교: 업종 **중앙값** 기준 (스코어링과 동일 기준)
+  - 분기 재무제표 테이블, 최근 뉴스 10건
   - 보유종목: `holding_opinion` 기반 수정 폼 / 비보유: 추가 폼
-  - 의견 요약: `holding_opinion`(보유 시) + `market_opinion` 구분 표시
+  - 의견 요약 섹션 하단: 면책 문구 ("이 분석은 참고용이며...")
+  - 종목 코드 옆 데이터 갱신 시각: `getDataFreshnessLabel()` (장중/장외 자동 판단)
   - 데이터 새로고침 버튼
 - **API 호출**: `getCurrentPrice`, `getVolatility`, `getIndicators`, `getNews`, `getFinancials`, `getSectorComparison`, `getChartData`, `refreshStock`
 
@@ -211,17 +253,26 @@ interface AlertActions {
 ### RecommendedStockCard (추천 종목 카드)
 - **Props**: `stock: Recommendation`, `onDetailClick`
 - **기능**: 종목명/코드, 점수 뱃지, 현재가→적정가 (상승여력%), 추천 사유
-  - `source` 뱃지: '전문가 선정'(manual) / '알고리즘' + 호버 시 신뢰도 설명 tooltip
+  - `source` 뱃지: '전문가 선정'(manual) / '알고리즘' + 탭/클릭 시 accordion 펼침
+  - **accordion 콘텐츠**: `reason` 텍스트(추천 사유) + source별 신뢰도 설명 (정보 활용도 향상)
   - `market_opinion` 뱃지
   - fairPrice 라벨에 출처 표기: "적정가 (애널리스트)" vs "적정가 (추정)"
+
+### HelpBottomSheet (용어 설명 바텀시트)
+- **Props**: `termKey: HelpTermKey | null`, `onClose`
+- **기능**: 8개 용어(PER/PBR/ROE/RSI/MACD/Bollinger/SupplyDemand/SMA) 설명을 바텀시트로 표시. 모바일은 하단, PC는 중앙. 외부 클릭/X 버튼으로 닫기
+
+### WatchlistContent (관심종목 공유 컴포넌트)
+- **Props**: `onDetailClick`
+- **기능**: WatchlistPage와 HoldingsAnalysisPage 관심종목 탭이 공유. `useWatchlistStore`로 상태 관리. 종목 검색/추가/삭제, market_opinion 뱃지, Empty State
 
 ### NavButton (사이드바 네비게이션)
 - **Props**: `active`, `onClick`, `icon`, `label`
 - **기능**: 활성 상태 스타일링, 화살표 인디케이터
 
 ### StatCard (통계 카드)
-- **Props**: `title`, `value`, `change?`, `positive?`, `icon`
-- **기능**: 제목/값/변동률 표시, 아이콘 배경
+- **Props**: `title`, `value`, `change?`, `positive?`, `icon`, `subtitle?`
+- **기능**: 제목/값/변동률 표시, 아이콘 배경, 선택적 subtitle (예: "투자금액 기준 가중 평균")
 
 ---
 
@@ -280,7 +331,8 @@ type HoldingOpinion = '보유' | '추가매수' | '관망' | '매도';
 | 인터페이스 | 용도 | 주요 필드 |
 |-----------|------|----------|
 | Stock | 종목 기본 | code, name, category, price, change, per, pbr, roe, target_price, **market_opinion** |
-| Holding | 보유종목 | code, name, value(비중), avgPrice, currentPrice, quantity, **holding_opinion**, **market_opinion** |
+| Holding | 보유종목 | code, name, value(비중), avgPrice, currentPrice, quantity, **holding_opinion**, **market_opinion**, **sma_available** |
+| UpdateHoldingPayload | 보유종목 부분 수정 | code, avgPrice, quantity? — `PUT /api/holdings/:code` 호출 시 사용 |
 | Recommendation | 추천종목 | code, name, category, reason, score, fairPrice, currentPrice, 재무지표, analysis, advice, **market_opinion**, **source** |
 | ScoringBreakdown | 스코어링 상세 | valuation, technical, supplyDemand, trend, total, detail, **per_negative?**, **low_confidence?** |
 | StockDetail | 종목 상세 | Stock + history[], investorData[], analysis, tossUrl, chartPath, scoringBreakdown? |
@@ -331,6 +383,7 @@ PC/태블릿 (md: 이상):
 - 글로벌 검색바 (디바운스 300ms, 모바일에서 full-width)
 - 알림 벨 (미읽은 수 뱃지) — `useAlertStore.unreadCount`
   - 알림 아이콘 + 우선순위별 좌측 강조 border, 아이콘 + 한국어 라벨
+  - **알림 항목 탭 시**: `handleDetailClick({ code, name })`로 종목 상세 이동 + 알림 패널 닫기. 삭제 버튼은 stopPropagation로 분리
 - 유저 프로필 → 클릭 시 analysis 페이지 이동
 
 ### 상세뷰 네비게이션
@@ -340,15 +393,34 @@ PC/태블릿 (md: 이상):
 
 ---
 
+## 온보딩 플로우 (첫 실행 시)
+**localStorage 키 (2개)**:
+- `disclaimer_accepted` — 면책 모달 확인 여부
+- `onboarding_done` — 온보딩 스텝 완료 여부 (스킵 포함)
+
+**플로우**:
+1. **면책 모달** (`disclaimer_accepted`): 원금 손실 위험 강조 → [확인했습니다]
+2. **온보딩 스텝** (`onboarding_done`): "내 주식을 추가해볼게요" → [건너뛰기] / [직접 추가할게요]
+   - [직접 추가할게요] 클릭 시: `navigateTo('analysis', { focus: 'add-holding-search' })` 호출
+   - HoldingsAnalysisPage가 마운트 시 `useNavigationStore.consumePendingFocus()` 검사 → 자동으로 종목 추가 폼 노출
+3. **대시보드 도착**: 빈 포트폴리오 CTA 카드는 `onboarding_done` 설정된 **재방문** 시에만 표시 (중복 방지)
+
 ## 투자 면책 고지 (3곳)
 1. **첫 실행 모달** — `localStorage('disclaimer_accepted')` 1회. 원금 손실 위험 강조
-2. **추천 페이지 상단** — "아래 종목들은 알고리즘 분석 결과로, 투자를 권유하지 않습니다." 상시 표시
+2. **추천 페이지 상단** — "알고리즘이 분석한 참고 정보예요. 투자 결정은 항상 본인이 직접 판단해주세요." (안내형)
 3. **종목 상세 의견 하단** — "이 분석은 참고용이며 실제 투자 성과를 보장하지 않습니다."
+4. **추천 카드 하단** — "투자 참고용이며 투자 권유가 아닙니다."
 
 ## 데이터 표시 원칙
-- **갱신 시각**: 대시보드("N분 전"), 종목 상세("N분 전 (HH:MM, 장중 데이터/전일 종가)") — 장 운영시간(9~16시 평일) 자동 판단
+- **갱신 시각**: `src/utils/dataFreshness.ts`의 공용 함수
+  - `getDataFreshnessLabel(lastUpdated)`: "N분 전 (HH:MM, 장중 데이터/전일 종가)" — 종목 상세
+  - `getDataFreshnessShort(lastUpdated)`: "N분 전" — 대시보드
+  - 장 운영시간(KST 평일 9~16시) 자동 판단. **클라이언트 시간대와 무관** (KST 고정 변환)
+  - **알려진 제약**: 공휴일(광복절 등)에는 평일 휴장이지만 "장중 데이터"로 오표시 가능. 향후 공휴일 캘린더 통합 시 해소
 - **재무지표 비교 기준**: 업종 **중앙값**(medians) 기준. 스코어링 알고리즘과 동일 기준 사용
-- **스코어링 해석**: 영역 점수 기반 4단계 텍스트 (≥2.5 매우 좋음 / ≥1.5 적정 / ≥0.5 약함 / 그 외 부정적)
+- **스코어링 해석**: `ScoringBreakdownPanel`에서 만점대비 비율 4단계 (≥80% / ≥60% / ≥25% / 그 외)
+  - 밸류에이션(만점3): 2.4 / 1.8 / 0.75 / 그 외
+  - 수급(만점2): 1.6 / 1.2 / 0.5 / 그 외
 
 ---
 

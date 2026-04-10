@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import { stockApi } from '../api/stockApi';
+import { getDataFreshnessShort } from '../utils/dataFreshness';
 import type { Holding, StockSummary } from '../types/stock';
 
 interface PortfolioHistoryEntry {
@@ -75,8 +76,8 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* 온보딩: 빈 포트폴리오 시 안내 */}
-      {holdings.length === 0 && (
+      {/* 빈 포트폴리오 CTA (온보딩 진행 중이 아닐 때만 표시) */}
+      {holdings.length === 0 && localStorage.getItem('onboarding_done') && (
         <div className="bg-gradient-to-br from-blue-600/10 to-emerald-600/10 border border-blue-500/20 rounded-3xl p-8 text-center">
           <h2 className="text-xl font-bold mb-3">주식 분석을 시작해 보세요!</h2>
           <p className="text-slate-400 text-sm mb-6 leading-relaxed max-w-md mx-auto">
@@ -96,9 +97,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
         const dates = holdings.map(h => (h as unknown as { last_updated?: string }).last_updated).filter(Boolean);
         if (!dates.length) return null;
         const latest = Math.max(...dates.map(d => new Date(d as string).getTime()));
-        const mins = Math.floor((Date.now() - latest) / 60000);
-        const label = mins < 1 ? '방금' : mins < 60 ? `${mins}분 전` : mins < 1440 ? `${Math.floor(mins / 60)}시간 전` : `${Math.floor(mins / 1440)}일 전`;
-        return <p className="text-xs text-slate-600">마지막 업데이트: {label}</p>;
+        return <p className="text-xs text-slate-600">마지막 업데이트: {getDataFreshnessShort(new Date(latest).toISOString())}</p>;
       })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <StatCard
@@ -125,6 +124,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           value={`${avgProfitRate >= 0 ? '+' : ''}${avgProfitRate.toFixed(2)}%`}
           positive={avgProfitRate >= 0}
           icon={<ArrowUpRight size={24} />}
+          subtitle="투자금액 기준 가중 평균"
         />
       </div>
 
@@ -255,6 +255,18 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick }: DashboardPagePro
           </div>
         </div>
       </div>
+
+      {/* 전체 종목 보기 진입 카드 */}
+      <button
+        onClick={() => onNavigate('major')}
+        className="w-full p-4 bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between transition-colors text-left"
+      >
+        <div>
+          <p className="text-sm font-bold">전체 종목 보기</p>
+          <p className="text-xs text-slate-500 mt-0.5">삼성전자, 현대차 등 97개 주요 종목을 살펴보세요</p>
+        </div>
+        <span className="text-blue-400">→</span>
+      </button>
     </div>
   );
 };

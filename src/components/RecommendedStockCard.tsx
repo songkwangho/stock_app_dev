@@ -92,11 +92,14 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
         </span>
       </div>
       {showSourceInfo && (
-        <p className="text-xs text-slate-500 mt-1 p-2 bg-slate-950/50 rounded-lg leading-relaxed">
-          {stock.source === 'manual'
-            ? '전문가가 직접 선정한 종목이에요. 투자 결정은 본인이 하세요.'
-            : '10가지 지표로 자동 분석한 종목이에요. 과거 성과가 미래를 보장하지 않아요.'}
-        </p>
+        <div className="text-xs mt-1 p-3 bg-slate-950/50 rounded-lg leading-relaxed space-y-1.5">
+          {stock.reason && <p className="text-slate-300">{stock.reason}</p>}
+          <p className="text-slate-500">
+            {stock.source === 'manual'
+              ? '전문가가 직접 분석하여 선정한 종목이에요. 투자 결정은 본인이 하세요.'
+              : '10가지 지표를 자동 분석한 결과예요. 과거 성과가 미래를 보장하지 않아요.'}
+          </p>
+        </div>
       )}
       <p className="text-xs text-slate-600 mt-2 leading-relaxed">투자 참고용이며 투자 권유가 아닙니다.</p>
     </div>

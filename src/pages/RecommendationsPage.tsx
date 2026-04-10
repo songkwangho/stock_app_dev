@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Zap, RefreshCw, TrendingUp } from 'lucide-react';
+import { Zap, RefreshCw, TrendingUp, Layers } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
 import RecommendedStockCard from '../components/RecommendedStockCard';
+import { useNavigationStore } from '../stores/useNavigationStore';
 import type { Recommendation, StockSummary } from '../types/stock';
 
 interface RecommendationsPageProps {
@@ -135,6 +136,21 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
           <p className="text-slate-600 text-sm">시장 상황이 변하면 자동으로 업데이트됩니다.</p>
         </div>
       )}
+
+      {/* 모바일 한정: 전체 종목 보기 */}
+      <button
+        onClick={() => useNavigationStore.getState().navigateTo('major')}
+        className="md:hidden w-full p-4 bg-slate-900/50 hover:bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between transition-colors"
+      >
+        <div className="flex items-center space-x-3">
+          <Layers size={20} className="text-blue-400" />
+          <div className="text-left">
+            <p className="text-sm font-bold">전체 종목 보기</p>
+            <p className="text-xs text-slate-500">8개 섹터별 97종목 한눈에</p>
+          </div>
+        </div>
+        <span className="text-blue-400">→</span>
+      </button>
     </div>
   );
 };

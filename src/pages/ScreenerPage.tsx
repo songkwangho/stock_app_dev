@@ -10,6 +10,7 @@ interface ScreenerPageProps {
 interface Preset {
   name: string;
   description: string;
+  summary: string;
   emoji: string;
   filters: Record<string, string | number>;
 }
@@ -17,25 +18,29 @@ interface Preset {
 const PRESETS: Preset[] = [
   {
     name: '저평가 우량주',
-    description: 'PER이 낮고 ROE가 높은 알짜 기업을 찾아요',
+    description: '싸면서 잘 버는 기업',
+    summary: 'PER < 15 + ROE > 10%',
     emoji: '💎',
     filters: { perMax: 15, roeMin: 10 },
   },
   {
     name: '안전한 자산주',
-    description: 'PBR이 1 이하인 자산 대비 저평가 기업이에요',
+    description: '자산 대비 저평가된 기업',
+    summary: 'PBR ≤ 1',
     emoji: '🛡️',
     filters: { pbrMax: 1 },
   },
   {
     name: '고수익 성장주',
-    description: 'ROE 20% 이상, 돈을 아주 잘 버는 기업이에요',
+    description: '돈을 아주 잘 버는 기업',
+    summary: 'ROE ≥ 20%',
     emoji: '🚀',
     filters: { roeMin: 20 },
   },
   {
-    name: '10만원 이하 소액 투자',
-    description: '적은 금액으로 시작할 수 있는 종목이에요',
+    name: '소액 투자',
+    description: '적은 금액으로 시작',
+    summary: '주가 ≤ 10만원',
     emoji: '💰',
     filters: { priceMax: 100000 },
   },
@@ -106,7 +111,8 @@ const ScreenerPage = ({ onDetailClick }: ScreenerPageProps) => {
           >
             <span className="text-2xl mb-2 block">{preset.emoji}</span>
             <h4 className="text-sm font-bold mb-1">{preset.name}</h4>
-            <p className="text-xs text-slate-500 leading-relaxed">{preset.description}</p>
+            <p className="text-xs text-blue-400 font-mono mb-1">{preset.summary}</p>
+            <p className="text-xs text-slate-500 leading-relaxed">→ {preset.description}</p>
           </button>
         ))}
       </div>

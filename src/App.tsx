@@ -190,9 +190,18 @@ const App = () => {
                       <p className="text-sm font-bold">{stock.name}</p>
                       <p className="text-xs text-slate-500">{stock.code}</p>
                     </div>
-                    <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">
-                      {stock.category}
-                    </span>
+                    <div className="flex items-center space-x-1.5">
+                      {stock.market_opinion && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-400' :
+                          stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-400' :
+                          'bg-slate-500/10 text-slate-400'
+                        }`}>● {stock.market_opinion}</span>
+                      )}
+                      <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">
+                        {stock.category}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -236,7 +245,14 @@ const App = () => {
                       alerts.map((alert) => {
                         const typeInfo = ALERT_TYPE_LABELS[alert.type] || { label: alert.type, icon: '📋', color: 'text-slate-400 bg-slate-500/10', priority: 'low' };
                         return (
-                          <div key={alert.id} className={`px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${typeInfo.priority === 'high' ? 'border-l-2 border-l-red-500/50' : ''}`}>
+                          <div
+                            key={alert.id}
+                            onClick={() => {
+                              handleDetailClick({ code: alert.code, name: alert.name, category: '알림' });
+                              setShowAlerts(false);
+                            }}
+                            className={`px-5 py-3 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors cursor-pointer ${typeInfo.priority === 'high' ? 'border-l-2 border-l-red-500/50' : ''}`}
+                          >
                             <div className="flex items-start justify-between mb-1">
                               <div className="flex items-center space-x-2">
                                 <span className="text-sm">{typeInfo.icon}</span>
@@ -246,7 +262,7 @@ const App = () => {
                                 <span className="text-xs text-slate-500 font-bold">{alert.name}</span>
                               </div>
                               <button
-                                onClick={() => handleDeleteAlert(alert.id)}
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAlert(alert.id); }}
                                 className="text-red-400/60 active:text-red-400 transition-all p-1 min-w-[32px] min-h-[32px] flex items-center justify-center"
                               >
                                 <Trash2 size={14} />
@@ -365,7 +381,7 @@ const App = () => {
                 </div>
                 <div className="flex space-x-3">
                   <button onClick={() => { localStorage.setItem('onboarding_done', '1'); setOnboardingStep(0); }} className="flex-1 py-3 bg-slate-800 text-slate-400 text-sm font-bold rounded-xl">건너뛰기</button>
-                  <button onClick={() => { setOnboardingStep(0); localStorage.setItem('onboarding_done', '1'); navigateTo('analysis'); }} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors">직접 추가할게요</button>
+                  <button onClick={() => { setOnboardingStep(0); localStorage.setItem('onboarding_done', '1'); navigateTo('analysis', { focus: 'add-holding-search' }); }} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors">직접 추가할게요</button>
                 </div>
               </>
             )}

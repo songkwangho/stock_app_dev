@@ -9,6 +9,8 @@ import {
 import { stockApi } from '../api/stockApi';
 import type { StockSummary, StockDetail, ChartDataPoint, TechnicalIndicators, NewsItem, FinancialData, SectorComparison, HistoryEntry } from '../types/stock';
 import ScoringBreakdownPanel from './ScoringBreakdownPanel';
+import HelpBottomSheet, { type HelpTermKey } from './HelpBottomSheet';
+import { getDataFreshnessLabel } from '../utils/dataFreshness';
 
 interface StockDetailViewProps {
   stock: StockSummary;
@@ -54,6 +56,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
   const [refreshing, setRefreshing] = useState(false);
   const [indicators, setIndicators] = useState<TechnicalIndicators | null>(null);
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
+  const [helpTerm, setHelpTerm] = useState<HelpTermKey | null>(null);
   const [news, setNews] = useState<NewsItem[] | null>(null);
   const [financials, setFinancials] = useState<FinancialData | null>(null);
   const [sectorData, setSectorData] = useState<SectorComparison | null>(null);
@@ -207,18 +210,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
               <p className="text-slate-500 font-mono">{stock.code}</p>
               {(stockDetail as unknown as { last_updated?: string })?.last_updated && (
                 <span className="text-xs text-slate-600">
-                  {(() => {
-                    const updated = new Date((stockDetail as unknown as { last_updated: string }).last_updated);
-                    const diff = Date.now() - updated.getTime();
-                    const mins = Math.floor(diff / 60000);
-                    const now = new Date();
-                    const h = now.getHours();
-                    const isMarketOpen = now.getDay() >= 1 && now.getDay() <= 5 && h >= 9 && h < 16;
-                    const timeLabel = updated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-                    const freshness = mins < 1 ? '방금' : mins < 60 ? `${mins}분 전` : mins < 1440 ? `${Math.floor(mins / 60)}시간 전` : `${Math.floor(mins / 1440)}일 전`;
-                    const context = isMarketOpen ? '장중 데이터' : '전일 종가';
-                    return `${freshness} (${timeLabel}, ${context})`;
-                  })()}
+                  {getDataFreshnessLabel((stockDetail as unknown as { last_updated: string }).last_updated)}
                 </span>
               )}
             </div>
@@ -406,7 +398,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PER (주가수익비율)</h4>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">PER (주가수익비율)</h4>
+                  <button onClick={() => setHelpTerm('per')} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label="PER 도움말">[?]</button>
+                </div>
                 <p className={`text-xl font-bold ${stockDetail?.per && stockDetail.per < 0 ? 'text-yellow-400' : 'text-white'}`}>
                   {stockDetail?.per ? (stockDetail.per < 0 ? '적자' : `${stockDetail.per}배`) : '---'}
                 </p>
@@ -421,7 +416,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                 </p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">PBR (주가순자산비율)</h4>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">PBR (주가순자산비율)</h4>
+                  <button onClick={() => setHelpTerm('pbr')} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label="PBR 도움말">[?]</button>
+                </div>
                 <p className="text-xl font-bold text-white">{stockDetail?.pbr ? `${stockDetail.pbr}배` : '---'}</p>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   {stockDetail?.pbr && stockDetail.pbr <= 1
@@ -432,7 +430,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                 </p>
               </div>
               <div className="p-5 bg-slate-950/30 rounded-2xl border border-slate-800">
-                <h4 className="text-xs font-bold mb-1 text-slate-500 uppercase tracking-widest">ROE (자기자본이익률)</h4>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">ROE (자기자본이익률)</h4>
+                  <button onClick={() => setHelpTerm('roe')} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label="ROE 도움말">[?]</button>
+                </div>
                 <p className="text-xl font-bold text-white">{stockDetail?.roe ? `${stockDetail.roe}%` : '---'}</p>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   {stockDetail?.roe
@@ -476,10 +477,15 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
 
                 {/* 개별 지표 카드들 */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {indicators.summary.details.map((detail) => (
+                  {indicators.summary.details.map((detail) => {
+                    const termKey: HelpTermKey | null = detail.indicator === 'RSI' ? 'rsi' : detail.indicator === 'MACD' ? 'macd' : detail.indicator === '볼린저밴드' ? 'bollinger' : null;
+                    return (
                     <div key={detail.indicator} className="p-4 bg-slate-900/50 rounded-xl border border-slate-800/50">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-bold text-slate-300">{detail.indicator}</h4>
+                        {termKey && (
+                          <button onClick={() => setHelpTerm(termKey)} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label={`${detail.indicator} 도움말`}>[?]</button>
+                        )}
                       </div>
                       <p className={`text-lg font-black mb-1 ${
                         detail.color === 'green' ? 'text-emerald-400' :
@@ -514,7 +520,8 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* 변동성 */}
@@ -531,7 +538,10 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
             {/* Investor Trading Trends */}
             {stockDetail?.investorData && stockDetail.investorData.length > 0 && (
               <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
-                <h3 className="text-lg font-semibold mb-2">투자자별 매매동향</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold">투자자별 매매동향</h3>
+                  <button onClick={() => setHelpTerm('supplyDemand')} className="text-slate-600 hover:text-blue-400 text-xs min-w-[24px] min-h-[24px] flex items-center justify-center" aria-label="수급 도움말">[?]</button>
+                </div>
                 <p className="text-xs text-slate-500 mb-4">최근 10거래일 동안 개인·외국인·기관이 주식을 사고판 양을 보여줘요</p>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -854,6 +864,7 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
           </div>
         </div>
       </div>
+      <HelpBottomSheet termKey={helpTerm} onClose={() => setHelpTerm(null)} />
     </div>
   );
 };

@@ -28,6 +28,13 @@ export interface Holding {
   quantity: number;
   holding_opinion?: HoldingOpinion;
   market_opinion?: MarketOpinion;
+  sma_available?: boolean;  // false면 holding_opinion 신뢰 불가 → '분석 중' 표시
+}
+
+export interface UpdateHoldingPayload {
+  code: string;
+  avgPrice: number;
+  quantity?: number;
 }
 
 export interface Recommendation {
