@@ -14,7 +14,7 @@ server/
 ├── db/
 │   ├── connection.js     # DB 연결
 │   ├── schema.js         # initSchema() — 8개 테이블 + 인덱스
-│   └── migrate.js        # runMigrations() — 11개 마이그레이션
+│   └── migrate.js        # runMigrations() — information_schema 기반 컬럼 검증 (PG 신규 DB는 사실상 no-op)
 ├── helpers/
 │   ├── cache.js          # getCached/setCache/invalidateCache (10분 TTL)
 │   ├── deviceId.js       # getDeviceId/requireDeviceId

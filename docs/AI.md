@@ -57,7 +57,7 @@
 - recommended_stocks.fair_price ON CONFLICT 시 갱신 안 함 (최초 등록 후 고정). reason/score는 서버 재시작마다 코드 값으로 초기화 (data.js에 경고 주석)
 
 ### 3. 프론트엔드 개발
-**기본 구조**: 7개 페이지 + 8개 컴포넌트 + 4개 도메인 스토어 + Toast
+**기본 구조**: 7개 페이지 + 9개 컴포넌트 (ErrorBanner 포함) + 4개 도메인 스토어 + Toast
 - 반응형: PC 사이드바 + 모바일 하단 탭바 5개(대시보드/포트폴리오/추천/알림/설정)
 - 관심종목: 모바일은 포트폴리오 내 탭(A안), PC는 사이드바 독립 페이지 — 둘 다 `WatchlistContent` 공유
 

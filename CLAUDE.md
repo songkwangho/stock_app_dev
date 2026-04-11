@@ -12,7 +12,7 @@
 ## 기술 스택
 - **프론트엔드**: React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + Recharts v3.7 + Zustand v5
 - **모바일 래핑**: Capacitor (iOS/Android 배포 시)
-- **백엔드**: Node.js + Express + SQLite3 (better-sqlite3) + express-rate-limit → PostgreSQL 전환 예정
+- **백엔드**: Node.js + Express + SQLite3 (better-sqlite3) + express-rate-limit → **PostgreSQL 전환 진행 중** (14차 Step 1~8 완료, 서버 기동 불가 상태)
 - **데이터 소스**: 네이버 증권 (보조 스크래핑) + 토스증권 Puppeteer (차트 캡처) → KIS/KRX 공식 API 전환 예정
 
 ---
@@ -24,24 +24,25 @@ stock_app_dev/
 │   ├── server.js             # 컴포지션 루트 (~80줄, 6개 도메인 라우터 마운트)
 │   ├── index.js              # 진입점 래퍼
 │   ├── db/
-│   │   ├── connection.js     # DB 연결
-│   │   ├── schema.js         # 8개 테이블 + 인덱스
-│   │   └── migrate.js        # 11개 마이그레이션
+│   │   ├── connection.js     # pg.Pool + query()/withTransaction() 헬퍼 (14차)
+│   │   ├── schema.js         # 8개 테이블 PG DDL — TIMESTAMPTZ/BIGSERIAL/NUMERIC, eps/category/chart_path 내재화
+│   │   └── migrate.js        # information_schema 기반 컬럼 검증 (신규 DB는 사실상 no-op)
 │   ├── helpers/
 │   │   ├── cache.js          # getCached/setCache/invalidateCache
 │   │   ├── deviceId.js       # getDeviceId/requireDeviceId
-│   │   └── sma.js            # computeSMA(db, code) — 도메인 간 의존성 회피용 공유 유틸
+│   │   ├── sma.js            # async computeSMA(pool, code) — 도메인 간 의존성 회피용 공유 유틸
+│   │   └── queryBuilder.js   # buildSetClause/buildWhereClause — PG 동적 플레이스홀더 ($1, $2…) 유틸
 │   ├── scrapers/
 │   │   ├── naver.js          # 네이버 증권 스크래핑 (EUC-KR)
 │   │   └── toss.js           # 토스증권 Puppeteer 캡처
 │   ├── domains/
 │   │   ├── analysis/
-│   │   │   ├── scoring.js    # 스코어링 + calculateHoldingOpinion + median
+│   │   │   ├── scoring.js    # 스코어링 (3개 async, trend/holding은 동기 유지) + calculateHoldingOpinion + median
 │   │   │   ├── indicators.js # calculateIndicators (RSI/MACD/볼린저 + *_available 플래그)
-│   │   │   └── router.js     # 분석 라우터 (7 endpoints)
+│   │   │   └── router.js     # 분석 라우터 (7 endpoints) — Step 10에서 await query() 교체 예정
 │   │   ├── alert/
-│   │   │   ├── service.js    # generateAlerts + ALERT_COOLDOWNS (메시지는 중립적 표현)
-│   │   │   └── router.js     # 알림 라우터 (4 endpoints)
+│   │   │   ├── service.js    # async generateAlerts + ALERT_COOLDOWNS (KST SQL `AT TIME ZONE 'Asia/Seoul'::date`)
+│   │   │   └── router.js     # 알림 라우터 (4 endpoints) — Step 10 예정
 │   │   ├── portfolio/
 │   │   │   ├── service.js    # recalcWeights
 │   │   │   └── router.js     # 포트폴리오 라우터 (5 endpoints, helpers/sma.js 사용)
@@ -83,9 +84,11 @@ stock_app_dev/
 ## 개발 명령어
 ```bash
 npm run dev              # Vite 프론트엔드 (포트 5173)
-node server/server.js    # Express 백엔드 (포트 3001)
+node server/server.js    # Express 백엔드 (포트 3001) — ⚠️ 14차 Step 9~14 완료 전까지 기동 불가
 npm run build            # TypeScript 체크 + 프로덕션 빌드
 ```
+
+> **⚠️ 14차 진행 중**: PostgreSQL 전환 Step 1~8 완료 (DB 레이어 + 스코어링 + 알림 async). 라우터 6개가 여전히 SQLite `db.prepare`를 호출하므로 서버 import 단계에서 실패. 다음 세션 Step 9~14 (getStockData async + 라우터 28개 교체 + 데이터 마이그레이션) 완료 후 `DATABASE_URL` 환경변수와 함께 기동 가능.
 
 ---
 
