@@ -1,16 +1,18 @@
 import express from 'express';
 import axios from 'axios';
-import db from '../../db/connection.js';
+import pool, { query } from '../../db/connection.js';
 import { calculateIndicators } from './indicators.js';
 import { median } from './scoring.js';
+import { buildWhereClause } from '../../helpers/queryBuilder.js';
 import { NAVER_FINANCE_URL } from '../../scrapers/naver.js';
 
 const router = express.Router();
 
 // GET /api/stock/:code/indicators
-router.get('/stock/:code/indicators', (req, res) => {
+router.get('/stock/:code/indicators', async (req, res) => {
     try {
-        res.json(calculateIndicators(db, req.params.code));
+        const result = await calculateIndicators(pool, req.params.code);
+        res.json(result);
     } catch (error) {
         console.error('Indicators Error:', error.message);
         res.status(500).json({ error: 'Failed to calculate indicators' });
@@ -18,18 +20,19 @@ router.get('/stock/:code/indicators', (req, res) => {
 });
 
 // GET /api/stock/:code/volatility - stddev of daily returns over recent N days
-router.get('/stock/:code/volatility', (req, res) => {
+router.get('/stock/:code/volatility', async (req, res) => {
     const { code } = req.params;
     try {
-        const history = db.prepare(
-            'SELECT price FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 6'
-        ).all(code);
+        const { rows: history } = await query(
+            'SELECT price FROM stock_history WHERE code = $1 ORDER BY date DESC LIMIT 6',
+            [code]
+        );
 
         if (history.length < 2) {
             return res.json({ volatility: null });
         }
 
-        const prices = history.map(h => h.price).reverse();
+        const prices = history.map(h => Number(h.price)).reverse();
         const returns = [];
         for (let i = 1; i < prices.length; i++) {
             returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
@@ -164,31 +167,45 @@ router.get('/stock/:code/chart/:timeframe', async (req, res) => {
     }
 });
 
-// GET /api/screener - filter stocks by conditions
-router.get('/screener', (req, res) => {
+// GET /api/screener - filter stocks by conditions.
+// 동적 WHERE 절을 queryBuilder.buildWhereClause로 조립해 PG 플레이스홀더 번호($1, $2…)를 일관되게 유지한다.
+router.get('/screener', async (req, res) => {
     try {
         const { perMax, perMin, pbrMax, pbrMin, roeMin, priceMin, priceMax, category } = req.query;
-        let sql = `
+
+        // PER 음수(적자 기업) 제외는 perMin/perMax가 있을 때만 강제.
+        const perFilterActive = perMin !== undefined || perMax !== undefined;
+
+        const conditions = [];
+        if (perFilterActive) conditions.push({ sql: 's.per > ', value: 0 });
+        if (perMin !== undefined) conditions.push({ sql: 's.per >= ', value: Number(perMin) });
+        if (perMax !== undefined) conditions.push({ sql: 's.per <= ', value: Number(perMax) });
+        if (pbrMin !== undefined) conditions.push({ sql: 's.pbr >= ', value: Number(pbrMin) });
+        if (pbrMax !== undefined) conditions.push({ sql: 's.pbr <= ', value: Number(pbrMax) });
+        if (roeMin !== undefined) conditions.push({ sql: 's.roe >= ', value: Number(roeMin) });
+        if (priceMin !== undefined) conditions.push({ sql: 's.price >= ', value: Number(priceMin) });
+        if (priceMax !== undefined) conditions.push({ sql: 's.price <= ', value: Number(priceMax) });
+        if (category) conditions.push({ sql: 's.category = ', value: category });
+
+        const { clause, params } = buildWhereClause(conditions, 1);
+        const whereExtra = clause ? ` AND ${clause}` : '';
+
+        const sql = `
             SELECT s.*, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
-            WHERE s.price > 0
+            WHERE s.price > 0${whereExtra}
+            ORDER BY s.roe DESC NULLS LAST
+            LIMIT 50
         `;
-        const params = [];
-
-        if (perMin || perMax) { sql += ' AND s.per > 0'; } // PER 음수(적자 기업) 제외
-        if (perMin) { sql += ' AND s.per >= ?'; params.push(Number(perMin)); }
-        if (perMax) { sql += ' AND s.per <= ?'; params.push(Number(perMax)); }
-        if (pbrMin) { sql += ' AND s.pbr >= ?'; params.push(Number(pbrMin)); }
-        if (pbrMax) { sql += ' AND s.pbr <= ?'; params.push(Number(pbrMax)); }
-        if (roeMin) { sql += ' AND s.roe >= ?'; params.push(Number(roeMin)); }
-        if (priceMin) { sql += ' AND s.price >= ?'; params.push(Number(priceMin)); }
-        if (priceMax) { sql += ' AND s.price <= ?'; params.push(Number(priceMax)); }
-        if (category) { sql += ' AND s.category = ?'; params.push(category); }
-
-        sql += ' ORDER BY s.roe DESC NULLS LAST LIMIT 50';
-        const results = db.prepare(sql).all(...params);
-        res.json(results);
+        const { rows: results } = await query(sql, params);
+        const mapped = results.map(s => ({
+            ...s,
+            per: s.per !== null ? Number(s.per) : null,
+            pbr: s.pbr !== null ? Number(s.pbr) : null,
+            roe: s.roe !== null ? Number(s.roe) : null,
+        }));
+        res.json(mapped);
     } catch (error) {
         console.error('Screener Error:', error.message);
         res.status(500).json({ error: 'Screener failed' });
@@ -196,16 +213,23 @@ router.get('/screener', (req, res) => {
 });
 
 // GET /api/sector/:category/compare - sector medians + per-stock comparison
-router.get('/sector/:category/compare', (req, res) => {
+router.get('/sector/:category/compare', async (req, res) => {
     const { category } = req.params;
     try {
-        const stocks = db.prepare(`
+        const { rows: rawStocks } = await query(`
             SELECT s.code, s.name, s.price, s.per, s.pbr, s.roe, s.target_price, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
-            WHERE s.category = ? AND s.price > 0
+            WHERE s.category = $1 AND s.price > 0
             ORDER BY s.roe DESC NULLS LAST
-        `).all(category);
+        `, [category]);
+
+        const stocks = rawStocks.map(s => ({
+            ...s,
+            per: s.per !== null ? Number(s.per) : null,
+            pbr: s.pbr !== null ? Number(s.pbr) : null,
+            roe: s.roe !== null ? Number(s.roe) : null,
+        }));
 
         const perVals = stocks.filter(s => s.per && s.per > 0).map(s => s.per);
         const pbrVals = stocks.filter(s => s.pbr && s.pbr > 0).map(s => s.pbr);

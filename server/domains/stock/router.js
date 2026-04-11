@@ -1,8 +1,7 @@
 import express from 'express';
-import db from '../../db/connection.js';
+import { query, withTransaction } from '../../db/connection.js';
 import { getDeviceId } from '../../helpers/deviceId.js';
 import { invalidateCache } from '../../helpers/cache.js';
-import { captureChart } from '../../scrapers/toss.js';
 import { getStockData } from './service.js';
 
 const router = express.Router();
@@ -18,18 +17,14 @@ router.get('/stock/:code', async (req, res) => {
     }
 });
 
-// POST /api/stock/:code/refresh - invalidate cache and re-fetch
+// POST /api/stock/:code/refresh - invalidate cache and re-fetch.
+// Puppeteer 제거: 차트 캡처 경로가 사라졌으므로 단순히 getStockData만 재호출.
 router.post('/stock/:code/refresh', async (req, res) => {
     const { code } = req.params;
     invalidateCache(code);
     try {
-        const [data, chartResult] = await Promise.allSettled([
-            getStockData(code),
-            captureChart(code)
-        ]);
-        const stockData = data.status === 'fulfilled' ? data.value : null;
+        const stockData = await getStockData(code);
         if (stockData) {
-            stockData.chartPath = chartResult.status === 'fulfilled' ? chartResult.value : stockData.chartPath;
             res.json(stockData);
         } else {
             res.status(404).json({ error: 'Stock not found' });
@@ -41,18 +36,21 @@ router.post('/stock/:code/refresh', async (req, res) => {
 });
 
 // GET /api/stocks - list all stocks; prices kept fresh by background sync
-router.get('/stocks', (req, res) => {
+router.get('/stocks', async (req, res) => {
     try {
-        const stocks = db.prepare(`
+        const { rows: stocks } = await query(`
             SELECT s.*, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
             ORDER BY s.category, s.name
-        `).all();
+        `);
 
         const results = stocks.map(s => ({
             ...s,
             price: s.price || 0,
+            per: s.per !== null ? Number(s.per) : null,
+            pbr: s.pbr !== null ? Number(s.pbr) : null,
+            roe: s.roe !== null ? Number(s.roe) : null,
             market_opinion: s.market_opinion || '중립적'
         }));
         res.json(results);
@@ -65,18 +63,19 @@ router.get('/stocks', (req, res) => {
 // GET /api/search?q=...
 // 인덱스: stocks.code, stock_analysis.code 모두 PRIMARY KEY (자동 인덱스).
 // LEFT JOIN은 PK 기준이므로 효율적. name/code LIKE 검색은 풀스캔이지만
-// 97종목 규모에서 무시 가능. 종목 수가 1,000개 이상으로 늘어나면 FTS 인덱스 검토.
-router.get('/search', (req, res) => {
+// 97종목 규모에서 무시 가능. 종목 수가 1,000개 이상으로 늘어나면 tsvector/trigram 인덱스 검토.
+router.get('/search', async (req, res) => {
     const { q } = req.query;
     if (!q) return res.json([]);
     try {
-        const results = db.prepare(`
+        const like = `%${q}%`;
+        const { rows: results } = await query(`
             SELECT s.code, s.name, s.category, a.opinion AS market_opinion
             FROM stocks s
             LEFT JOIN stock_analysis a ON s.code = a.code
-            WHERE s.name LIKE ? OR s.code LIKE ?
+            WHERE s.name ILIKE $1 OR s.code ILIKE $1
             LIMIT 10
-        `).all(`%${q}%`, `%${q}%`);
+        `, [like]);
         res.json(results);
     } catch (error) {
         console.error('Search Error:', error.message);
@@ -101,21 +100,18 @@ router.post('/stocks', async (req, res) => {
     }
 });
 
-// DELETE /api/stocks/:code - remove a stock and all related rows
-router.delete('/stocks/:code', (req, res) => {
+// DELETE /api/stocks/:code - remove a stock and all related rows.
+// FK ON DELETE CASCADE는 holding_stocks / watchlist / recommended_stocks / stock_analysis를 자동 삭제한다.
+// stock_history / investor_history는 FK가 없어 수동 삭제.
+router.delete('/stocks/:code', async (req, res) => {
     const { code } = req.params;
     try {
-        const deleteTransaction = db.transaction((stockCode) => {
-            db.prepare('DELETE FROM recommended_stocks WHERE code = ?').run(stockCode);
-            db.prepare('DELETE FROM stock_analysis WHERE code = ?').run(stockCode);
-            db.prepare('DELETE FROM holding_stocks WHERE code = ?').run(stockCode); // all devices
-            db.prepare('DELETE FROM watchlist WHERE code = ?').run(stockCode); // all devices
-            db.prepare('DELETE FROM stock_history WHERE code = ?').run(stockCode);
-            const result = db.prepare('DELETE FROM stocks WHERE code = ?').run(stockCode);
-            return result.changes;
+        const { changes } = await withTransaction(async (client) => {
+            await client.query('DELETE FROM stock_history WHERE code = $1', [code]);
+            await client.query('DELETE FROM investor_history WHERE code = $1', [code]);
+            const result = await client.query('DELETE FROM stocks WHERE code = $1', [code]);
+            return { changes: result.rowCount };
         });
-
-        const changes = deleteTransaction(code);
         if (changes > 0) {
             res.json({ success: true, message: `Stock ${code} and all related data removed successfully.` });
         } else {
@@ -130,18 +126,18 @@ router.delete('/stocks/:code', (req, res) => {
 // GET /api/recommendations - manual + analysis-based recommendations, excluding holdings
 router.get('/recommendations', async (req, res) => {
     try {
-        const manualRecs = db.prepare(`
+        const { rows: manualRecs } = await query(`
             SELECT r.*, s.name, s.category
             FROM recommended_stocks r
             JOIN stocks s ON r.code = s.code
-        `).all();
+        `);
 
-        const analysisRecs = db.prepare(`
-            SELECT a.code, s.name, s.category, a.analysis as reason, 50 as score
+        const { rows: analysisRecs } = await query(`
+            SELECT a.code, s.name, s.category, a.analysis AS reason, 50 AS score
             FROM stock_analysis a
             JOIN stocks s ON a.code = s.code
             WHERE a.opinion = '긍정적'
-        `).all();
+        `);
 
         const combined = [...manualRecs.map(r => ({ ...r, source: r.source || 'manual' }))];
         for (const ar of analysisRecs) {
@@ -159,9 +155,11 @@ router.get('/recommendations', async (req, res) => {
         }
 
         const deviceId = getDeviceId(req);
-        const holdingCodes = deviceId
-            ? db.prepare('SELECT code FROM holding_stocks WHERE device_id = ?').all(deviceId).map(h => h.code)
-            : [];
+        let holdingCodes = [];
+        if (deviceId) {
+            const { rows: hrows } = await query('SELECT code FROM holding_stocks WHERE device_id = $1', [deviceId]);
+            holdingCodes = hrows.map(h => h.code);
+        }
         const nonHoldings = combined.filter(c => !holdingCodes.includes(c.code));
 
         const results = await Promise.all(nonHoldings.map(async (rec) => {
@@ -192,7 +190,6 @@ router.get('/recommendations', async (req, res) => {
                 market_opinion: stockData.market_opinion,
                 source: rec.source || 'manual',
                 tossUrl: stockData.tossUrl,
-                chartPath: stockData.chartPath
             };
         }));
 

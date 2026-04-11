@@ -5,10 +5,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+dotenv.config();
+
 // --- Separated Modules ---
-import db from './db/connection.js';
+import pool from './db/connection.js';
 import { initSchema } from './db/schema.js';
 import { runMigrations } from './db/migrate.js';
+import { registerInitialData } from './domains/stock/data.js';
 import { setupScheduler, setupCleanup } from './scheduler.js';
 
 // --- Domain Routers ---
@@ -22,14 +25,16 @@ import systemRouter from './domains/system/router.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config();
-
-// --- Database Initialization ---
-initSchema(db);
-runMigrations(db);
-
-// --- Seed Data (dynamic import: must run AFTER migrations) ---
-await import('./domains/stock/data.js');
+// --- Database Initialization (top-level await; ESM) ---
+// 순서가 중요하다:
+// 1) initSchema: 테이블/인덱스 생성 (멱등)
+// 2) runMigrations: 예상 컬럼 검증 (information_schema 기반 경고만)
+// 3) registerInitialData: stocks/recommended_stocks 시드 (ON CONFLICT로 멱등)
+// 4) setupCleanup / setupScheduler: 주기 작업 시작
+// 5) app.listen
+await initSchema(pool);
+await runMigrations(pool);
+await registerInitialData(pool);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -68,7 +73,7 @@ app.use('/api/', apiLimiter);
 app.use('/charts', express.static(path.join(__dirname, '..', 'public', 'charts')));
 
 // Cleanup old data + start scheduler (delayed sync on startup + daily 8AM)
-setupCleanup(db);
+setupCleanup(pool);
 setupScheduler();
 
 // --- Mount Domain Routers ---

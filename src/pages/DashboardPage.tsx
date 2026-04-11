@@ -65,11 +65,17 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
     : [{ name: '보유 종목 없음', value: 100, color: '#1e293b' }];
 
   // 차트용 데이터 변환: "20240115" → "1/15" + 툴팁용 한국어 풀 날짜
-  const chartData = portfolioHistory.map(d => ({
+  // 마지막 포인트는 "1/15 (오늘)"로 표시해 초보자가 어느 날이 오늘인지 바로 파악할 수 있게 한다 (14차 5-2).
+  const rawChartData = portfolioHistory.map(d => ({
     date: parseInt(d.date.slice(4, 6)) + '/' + parseInt(d.date.slice(6, 8)),
     fullDate: `${parseInt(d.date.slice(4, 6))}월 ${parseInt(d.date.slice(6, 8))}일`,
     value: d.value,
     profitRate: d.profitRate,
+  }));
+  const chartData = rawChartData.map((d, i) => ({
+    ...d,
+    date: i === rawChartData.length - 1 ? `${d.date} (오늘)` : d.date,
+    fullDate: i === rawChartData.length - 1 ? `${d.fullDate} (오늘)` : d.fullDate,
   }));
 
   const totalAsset = holdings.reduce((acc, cur) => acc + (cur.currentPrice * (cur.quantity || 0)), 0);
@@ -149,7 +155,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
         />
       </div>
 
-      <ErrorBanner error={historyError} kind="server" onRetry={fetchHistory} />
+      <ErrorBanner error={historyError} kind="server" onRetry={fetchHistory} autoRetryMs={3000} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
@@ -169,6 +175,18 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                 <div className="flex items-center justify-center h-full text-slate-500">
                   <RefreshCw className="animate-spin mr-2" size={20} />
                   <span>데이터 로딩 중...</span>
+                </div>
+              ) : holdings.length === 0 ? (
+                // 빈 포트폴리오 차트 대체 (14차 5-8) — Recharts 빈 AreaChart는 오류 없이 빈 영역만 표시되어 초보자가 오해함
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 text-center px-6">
+                  <p className="text-2xl mb-2">📈</p>
+                  <p className="text-sm font-bold mb-2">종목을 추가하면 수익률 그래프를 볼 수 있어요</p>
+                  <button
+                    onClick={() => onNavigate('analysis')}
+                    className="mt-3 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors"
+                  >
+                    포트폴리오에 추가하기 →
+                  </button>
                 </div>
               ) : chartData.length > 0 ? (() => {
                 // 오늘 수익이 마이너스이면 차트 색상을 빨간색으로 변경 (avgProfitRate 기준)

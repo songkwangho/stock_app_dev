@@ -1,5 +1,3 @@
-import db from '../../db/connection.js';
-
 // ===== 업종별 상위 기업 등록 (시가총액 기준) =====
 const topStocks = [
     // 기술/IT (15종)
@@ -113,20 +111,6 @@ const topStocks = [
 const majorStockMap = new Map();
 topStocks.forEach(s => majorStockMap.set(s.code, s));
 const majorStocks = Array.from(majorStockMap.values());
-console.log(`Registered ${majorStocks.length} major stocks for tracking.`);
-
-// Register all major stocks in DB
-const insertStock = db.prepare(`
-    INSERT INTO stocks (code, name)
-    VALUES (?, ?)
-    ON CONFLICT(code) DO NOTHING
-`);
-const registerStocks = db.transaction((stocks) => {
-    for (const s of stocks) {
-        insertStock.run(s.code, s.name);
-    }
-});
-registerStocks(majorStocks);
 
 // Initial Recommendations (manual, 20 stocks)
 const initialRecommendations = [
@@ -152,24 +136,59 @@ const initialRecommendations = [
     { code: '012330', reason: '전동화 부품 매출 비중 확대', fairPrice: 270000, score: 84 },
 ];
 
+// PostgreSQL 전환: server.js의 top-level await에서 호출되는 초기화 함수.
+// 모듈 import 만으로는 부작용이 발생하지 않으며, 명시적으로 registerInitialData(pool)을 호출해야 한다.
+//
 // ON CONFLICT 동작 의도:
-// ⚠️ 서버 재시작마다 reason/score는 코드 내 값으로 초기화됩니다.
-// DB에서 직접 reason/score를 수정해도 다음 재시작 시 사라집니다.
-// 영구 수정이 필요하면 이 파일의 initialRecommendations 배열을 직접 수정하세요.
-// - reason, score: 서버 재시작마다 코드 내 최신 값으로 덮어씌움 (운영자가 코드에서 관리)
-// - fair_price: 최초 등록 후 고정 (DB 값 유지, 시세 변동과 무관)
-// - source: 기존 DB 값 우선 유지 (알고리즘으로 변경된 경우 보존)
-const insertRec = db.prepare(`
-    INSERT INTO recommended_stocks (code, reason, fair_price, score, source)
-    VALUES (?, ?, ?, ?, 'manual')
-    ON CONFLICT(code) DO UPDATE SET
-        reason = excluded.reason,
-        score = excluded.score,
-        source = COALESCE(recommended_stocks.source, excluded.source)
-`);
-const populateRecs = db.transaction((recs) => {
-    for (const r of recs) {
-        insertRec.run(r.code, r.reason, r.fairPrice, r.score);
+// - stocks: name만 upsert (다른 필드는 syncAllStocks가 갱신).
+// - recommended_stocks:
+//   - reason, score: 서버 재시작마다 코드 내 최신 값으로 덮어씌움 (운영자가 코드에서 관리).
+//   - fair_price: 최초 등록 후 고정 (DB 값 유지, 시세 변동과 무관).
+//   - source: 기존 값 우선 (algorithm으로 변경된 경우 보존).
+export async function registerInitialData(pool) {
+    // stocks 시드 — 한 번의 트랜잭션으로 묶어 idle connection 감소.
+    {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const s of majorStocks) {
+                await client.query(
+                    'INSERT INTO stocks (code, name) VALUES ($1, $2) ON CONFLICT(code) DO NOTHING',
+                    [s.code, s.name]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
     }
-});
-populateRecs(initialRecommendations);
+    console.log(`Registered ${majorStocks.length} major stocks for tracking.`);
+
+    // recommended_stocks 시드
+    {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const r of initialRecommendations) {
+                await client.query(`
+                    INSERT INTO recommended_stocks (code, reason, fair_price, score, source)
+                    VALUES ($1, $2, $3, $4, 'manual')
+                    ON CONFLICT(code) DO UPDATE SET
+                        reason = EXCLUDED.reason,
+                        score = EXCLUDED.score,
+                        source = COALESCE(recommended_stocks.source, EXCLUDED.source)
+                `, [r.code, r.reason, r.fairPrice, r.score]);
+            }
+            await client.query('COMMIT');
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    }
+    console.log(`Seeded ${initialRecommendations.length} initial recommendations.`);
+}

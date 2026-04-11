@@ -2,10 +2,21 @@
 // 각 지표마다 *_available 플래그를 함께 반환한다 (sma_available과 동일 패턴).
 // UI는 플래그가 false일 때 "데이터 수집 중" 안내를 표시해야 한다.
 // 필요 히스토리: RSI 15일, MACD 26일, 볼린저밴드 20일 (해당 일수가 없으면 false)
-export function calculateIndicators(db, code) {
-    const history = db.prepare(
-        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date ASC'
-    ).all(code);
+//
+// PostgreSQL 전환: pool/async 시그니처. pg는 NUMERIC/BIGINT를 string으로 반환하므로 Number() 캐스팅.
+export async function calculateIndicators(pool, code) {
+    const { rows: rawHistory } = await pool.query(
+        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = $1 ORDER BY date ASC',
+        [code]
+    );
+    const history = rawHistory.map(h => ({
+        date: h.date,
+        price: Number(h.price),
+        open: Number(h.open),
+        high: Number(h.high),
+        low: Number(h.low),
+        volume: Number(h.volume),
+    }));
 
     const histLen = history.length;
     const availability = {
@@ -94,9 +105,9 @@ export function calculateIndicators(db, code) {
     const greenCount = details.filter(d => d.color === 'green').length;
     const redCount = details.filter(d => d.color === 'red').length;
     let summary;
-    if (greenCount > redCount) summary = { signal: '긍정적', description: '여러 지표가 매수에 유리한 신호를 보내고 있어요.', details };
+    if (greenCount > redCount) summary = { signal: '긍정적', description: '여러 지표가 긍정적인 신호를 보이고 있어요.', details };
     else if (redCount > greenCount) summary = { signal: '주의', description: '일부 지표가 주의 신호를 보내고 있어요. 신중하게 판단하세요.', details };
-    else summary = { signal: '중립', description: '특별한 매수/매도 신호 없이 안정적이에요.', details };
+    else summary = { signal: '중립', description: '특별한 방향성 없이 안정적이에요.', details };
 
     return { rsi, macd, bollinger, summary, ...availability };
 }

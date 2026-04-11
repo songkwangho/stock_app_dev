@@ -1,19 +1,26 @@
-import db from '../../db/connection.js';
+import { withTransaction } from '../../db/connection.js';
 
-// Recalculate weight for all holdings of a device based on investment cost
-export function recalcWeights(deviceId) {
-    const holdings = db.prepare(
-        'SELECT code, avg_price, quantity FROM holding_stocks WHERE device_id = ?'
-    ).all(deviceId);
-    const totalCost = holdings.reduce((sum, h) => sum + (h.avg_price || 0) * (h.quantity || 0), 0);
+// Recalculate weight for all holdings of a device based on investment cost.
+// PostgreSQL 전환: async + withTransaction. 호출자는 await 필수.
+export async function recalcWeights(pool, deviceId) {
+    const { rows: holdings } = await pool.query(
+        'SELECT code, avg_price, quantity FROM holding_stocks WHERE device_id = $1',
+        [deviceId]
+    );
+    const totalCost = holdings.reduce(
+        (sum, h) => sum + Number(h.avg_price || 0) * Number(h.quantity || 0),
+        0
+    );
     if (totalCost <= 0) return;
-    const updateStmt = db.prepare('UPDATE holding_stocks SET weight = ? WHERE device_id = ? AND code = ?');
-    const txn = db.transaction(() => {
+
+    await withTransaction(async (client) => {
         for (const h of holdings) {
-            const cost = (h.avg_price || 0) * (h.quantity || 0);
+            const cost = Number(h.avg_price || 0) * Number(h.quantity || 0);
             const weight = Math.round(cost / totalCost * 100);
-            updateStmt.run(weight, deviceId, h.code);
+            await client.query(
+                'UPDATE holding_stocks SET weight = $1 WHERE device_id = $2 AND code = $3',
+                [weight, deviceId, h.code]
+            );
         }
     });
-    txn();
 }

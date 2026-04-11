@@ -10,7 +10,6 @@ export async function runMigrations(pool) {
         { table: 'holding_stocks', columns: ['device_id', 'quantity'] },
         { table: 'alerts',         columns: ['device_id'] },
         { table: 'watchlist',      columns: ['device_id'] },
-        { table: 'stock_analysis', columns: ['chart_path'] },
         { table: 'recommended_stocks', columns: ['source', 'created_at'] },
     ];
 

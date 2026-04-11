@@ -8,6 +8,7 @@ import { usePortfolioStore } from './stores/usePortfolioStore';
 import { useAlertStore } from './stores/useAlertStore';
 import { useToastStore } from './stores/useToastStore';
 import NavButton from './components/NavButton';
+import { getDataFreshnessShort } from './utils/dataFreshness';
 import type { StockSummary, MarketIndex } from './types/stock';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -52,6 +53,8 @@ const App = () => {
   const [alertsExplained, setAlertsExplained] = useState(() => !!localStorage.getItem('onboarding_alerts_explained'));
   // 서버 health check (Render 콜드 스타트 / DB 연결 실패 가시화)
   const [healthState, setHealthState] = useState<'checking' | 'ok' | 'timeout'>('checking');
+  // /api/health의 lastSync 저장 — null이거나 24h 이상 오래되면 헤더 서브텍스트로 경고 (14차 5-1 P3)
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
   // 앱 진입 시 /api/health 호출. 10초 타임아웃이면 사용자에게 안내 후 [다시 시도] 버튼 제공.
   // 정상 응답 후에만 holdings/indices 로딩 시작.
@@ -62,13 +65,28 @@ const App = () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'}/health`, { signal: controller.signal });
       clearTimeout(timer);
-      if (res.ok) setHealthState('ok');
-      else setHealthState('timeout');
+      if (res.ok) {
+        try {
+          const body = await res.json();
+          setLastSync(body?.lastSync || null);
+        } catch { /* ignore */ }
+        setHealthState('ok');
+      } else {
+        setHealthState('timeout');
+      }
     } catch {
       clearTimeout(timer);
       setHealthState('timeout');
     }
   };
+
+  // lastSync 기반 안내 메시지 (null: 첫 sync 전, 24h 초과: 데이터 오래됨)
+  const syncWarning = (() => {
+    if (!lastSync) return '아직 데이터를 수집 중이에요. 잠시 기다려 주세요.';
+    const ageMs = Date.now() - new Date(lastSync).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) return '데이터가 오늘 갱신되지 않았어요. 최신 시세가 아닐 수 있어요.';
+    return null;
+  })();
 
   useEffect(() => { checkHealth(); }, []);
 
@@ -159,10 +177,11 @@ const App = () => {
           ) : (
             <>
               <p className="text-sm text-slate-300 leading-relaxed">
-                서버가 잠시 바빠요. 조금 후 다시 시도해 주세요.
+                서버가 깨어나는 중이에요.
               </p>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                네트워크 연결과 서버 상태를 확인해 주세요.
+              <p className="text-xs text-slate-500 leading-relaxed">
+                약 30초 후 <span className="font-bold text-slate-300">다시 시도</span>를 눌러주세요.<br/>
+                (무료 서버 특성상 첫 접속 시 시간이 걸릴 수 있어요.)
               </p>
               <button
                 onClick={checkHealth}
@@ -281,14 +300,22 @@ const App = () => {
                   '<span className="font-bold text-white">{searchQuery}</span>' 종목을 찾을 수 없어요.
                 </p>
                 <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                  현재 97개 주요 종목만 지원해요. 전체 목록에서 찾아보세요.
+                  현재 97개 주요 종목만 지원해요. 전체 목록에서 찾아보거나 종목코드로 직접 추가할 수 있어요.
                 </p>
-                <button
-                  onClick={() => { navigateTo('major'); setSearchQuery(''); setSearchResults([]); }}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors"
-                >
-                  전체 종목 보기 →
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { navigateTo('major'); setSearchQuery(''); setSearchResults([]); }}
+                    className="py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors"
+                  >
+                    전체 종목 보기 →
+                  </button>
+                  <button
+                    onClick={() => { navigateTo('settings'); setSearchQuery(''); setSearchResults([]); }}
+                    className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg transition-colors"
+                  >
+                    종목코드로 추가 →
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -333,6 +360,7 @@ const App = () => {
                           <li>• 보유·관심 종목의 가격 변화를 알려드려요.</li>
                           <li>• 데이터는 <span className="font-bold">하루 1회</span> 갱신 기준이에요 (실시간 아님).</li>
                           <li>• 동일 종목당 하루 최대 2건만 발송돼요.</li>
+                          <li>• SMA(이동평균선) 관련 알림은 <span className="font-bold">보유 종목에만</span> 발송돼요.</li>
                           <li>• 투자 결정은 항상 본인이 직접 해주세요.</li>
                         </ul>
                         <button
@@ -358,12 +386,19 @@ const App = () => {
                             className={`px-5 py-3 border-b border-slate-800/50 ${typeInfo.priority === 'high' ? 'border-l-2 border-l-red-500/50' : ''}`}
                           >
                             <div className="flex items-start justify-between mb-1">
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center space-x-2 flex-wrap">
                                 <span className="text-sm">{typeInfo.icon}</span>
                                 <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>
                                   {typeInfo.label}
                                 </span>
                                 <span className="text-xs text-slate-500 font-bold">{alert.name}</span>
+                                {/* 출처 뱃지 (14차 5-1): 'holding' = 보유 중, 'watchlist' = 관심 종목 */}
+                                {alert.source === 'holding' && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300">보유 중</span>
+                                )}
+                                {alert.source === 'watchlist' && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">관심 종목</span>
+                                )}
                               </div>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteAlert(alert.id); }}
@@ -375,7 +410,7 @@ const App = () => {
                             </div>
                             <p className="text-xs text-slate-400 leading-relaxed pl-7">{alert.message}</p>
                             <p className="text-xs text-slate-600 mt-1 pl-7">
-                              {new Date(alert.created_at).toLocaleString('ko-KR')}
+                              {getDataFreshnessShort(alert.created_at)}
                             </p>
                             <div className="flex items-center space-x-2 pl-7 mt-2">
                               <button
@@ -415,6 +450,13 @@ const App = () => {
             </div>
           </div>
         </header>
+
+        {/* 데이터 신선도 경고 배너 — health.lastSync null / 24h 초과 시 (14차 5-1 P3) */}
+        {syncWarning && (
+          <div className="px-4 md:px-10 py-2 bg-amber-500/5 border-b border-amber-500/20">
+            <p className="text-xs text-amber-300/80 max-w-7xl mx-auto">ℹ️ {syncWarning}</p>
+          </div>
+        )}
 
         <main className="flex-1 overflow-auto p-4 md:p-10 relative">
           <div className="max-w-7xl mx-auto pb-24 md:pb-20">

@@ -130,10 +130,16 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
+        // 빈 추천 목록 — 특히 syncAllStocks가 완료되기 전에는 긍정적 market_opinion이 없어 비어있을 수 있음 (14차 P3-2)
+        <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl px-6">
           <TrendingUp size={40} className="mx-auto text-slate-700 mb-4" />
-          <p className="text-slate-500 mb-2">현재 추천할 종목이 없어요.</p>
-          <p className="text-slate-600 text-sm">시장 상황이 변하면 자동으로 업데이트됩니다.</p>
+          <p className="text-slate-300 font-bold mb-2">지금 데이터를 분석 중이에요</p>
+          <p className="text-slate-500 text-sm leading-relaxed mb-1">
+            하루 1회(오전 8시) 97종목을 분석해 유망 종목을 선정해요.
+          </p>
+          <p className="text-slate-600 text-xs leading-relaxed">
+            첫 실행 시에는 전체 분석이 끝날 때까지 10~15분 정도 걸릴 수 있어요.
+          </p>
         </div>
       )}
 

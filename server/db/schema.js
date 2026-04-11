@@ -1,5 +1,6 @@
 // PostgreSQL 초기 DDL — SQLite의 migrate.js로 추가되던 컬럼(eps_current, eps_previous,
-// chart_path, source, category 등)을 모두 초기 스키마에 내재화한다.
+// source, category 등)을 모두 초기 스키마에 내재화한다.
+// (chart_path 컬럼은 Puppeteer 제거와 함께 삭제됐다.)
 // 신규 DB에서는 migrate.js가 사실상 불필요 (기존 SQLite 데이터 마이그레이션 검증용으로만 남김).
 export async function initSchema(pool) {
     await pool.query(`
@@ -63,11 +64,11 @@ export async function initSchema(pool) {
             advice     TEXT,
             opinion    TEXT,
             toss_url   TEXT,
-            chart_path TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
     `);
 
+    // source: 'holding' | 'watchlist' — 프론트에서 알림 출처를 구분 표시하는 용도 (14차 5-1).
     await pool.query(`
         CREATE TABLE IF NOT EXISTS alerts (
             id         BIGSERIAL PRIMARY KEY,
@@ -75,6 +76,7 @@ export async function initSchema(pool) {
             code       TEXT NOT NULL,
             name       TEXT,
             type       TEXT NOT NULL,
+            source     TEXT NOT NULL DEFAULT 'holding',
             message    TEXT NOT NULL,
             read       INTEGER DEFAULT 0,
             created_at TIMESTAMPTZ DEFAULT NOW()

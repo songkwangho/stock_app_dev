@@ -1,6 +1,6 @@
 import express from 'express';
 import axios from 'axios';
-import db from '../../db/connection.js';
+import { query } from '../../db/connection.js';
 
 const router = express.Router();
 
@@ -8,8 +8,8 @@ const router = express.Router();
 router.get('/health', async (req, res) => {
     const status = { api: false, database: false, lastSync: null };
     try {
-        const dbCheck = db.prepare('SELECT COUNT(*) as count FROM stocks').get();
-        status.database = dbCheck.count >= 0;
+        const { rows } = await query('SELECT COUNT(*)::int AS count FROM stocks');
+        status.database = rows[0].count >= 0;
 
         const testResp = await axios.get('https://finance.naver.com/item/main.naver?code=005930', {
             timeout: 5000,
@@ -21,8 +21,8 @@ router.get('/health', async (req, res) => {
     }
 
     try {
-        const latest = db.prepare('SELECT MAX(last_updated) as ts FROM stocks WHERE last_updated IS NOT NULL').get();
-        status.lastSync = latest?.ts || null;
+        const { rows } = await query('SELECT MAX(last_updated) AS ts FROM stocks WHERE last_updated IS NOT NULL');
+        status.lastSync = rows[0]?.ts || null;
     } catch { /* ignore */ }
 
     res.json(status);

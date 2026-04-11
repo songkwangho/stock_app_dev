@@ -39,16 +39,24 @@
   - **MajorStocksPage 삭제 확인 모달**: window.confirm 대신 모달. cascade 삭제 위험(보유·관심·알림) 명시.
   - **DashboardPage 차트 동적 색상**: 손실 상태(`avgProfitRate < 0`)면 라인·그라디언트가 빨간색으로 전환. 차트 위에 풀 날짜 범위 표시 ("1월 15일 ~ 2월 4일"). 툴팁도 풀 날짜로 표시.
   - **평단가 폼 초보자 레이블**: "매수가 (1주당 산 가격)" → "내가 산 평균 가격 (원)" + 평균 계산 예시 힌트 + 수량 출처 안내. HoldingsAnalysisPage·StockDetailView 양쪽 동기화.
-- **14차 PostgreSQL 전환 Step 1~8 (Option B)**:
-  - **`generateAlerts` 중복 함수 추출**: holders/watchers 루프 내부의 `hasDuplicate`/`dailyLimitReached` 클로저를 모듈 스코프 함수로 추출. 한쪽만 고쳐 불일치가 발생할 위험 제거 (로직-1). SQLite 상태에서도 적용 → PG 전환 시 한 곳만 async 변환하면 됨.
-  - **`server/db/connection.js` → `pg.Pool`**: `query()`/`withTransaction(fn)` 헬퍼 export. Neon 무료 플랜 연결 수 제한 고려 `max: 5`, 5초 connection timeout.
-  - **`server/db/schema.js` 재작성**: 이전 migrate.js로 추가되던 `eps_current`/`eps_previous`/`chart_path`/`source`/`category` 모두 초기 DDL에 내재화 (PG-1 해소). `INTEGER AUTOINCREMENT` → `BIGSERIAL`, `REAL` → `NUMERIC(10,4)`, `DATETIME` → `TIMESTAMPTZ DEFAULT NOW()`, `volume`은 `BIGINT`. FK에 `ON DELETE CASCADE` 추가.
-  - **`server/db/migrate.js` 재작성**: `information_schema.columns` 기반 `columnExists()` 헬퍼로 PRAGMA 대체. SQLite `db.exec()` 멀티스테이트먼트 테이블 재생성(holding_stocks/watchlist)은 PG 신규 DB에서 불필요하므로 제거 (PG-2 해소). 신규 DB에서는 검증 로그만 출력하는 no-op에 가까움.
-  - **`server/helpers/queryBuilder.js` 신설**: `buildSetClause(fields, startIndex)`/`buildWhereClause(conditions, startIndex)` 두 유틸. SQLite `?`는 순서 무관이지만 PG `$1, $2…`는 인덱스 추적이 필요. Step 10에서 screener(PG-4)와 PUT /api/holdings(PG-5) 동적 SQL에 활용 예정.
-  - **`server/helpers/sma.js` async**: `computeSMA(pool, code)` 첫 인자 pool로 변경. pg NUMERIC 응답이 string이라 `Number()` 캐스팅 추가.
-  - **스코어링 3개 async**: `calculateValuationScore`/`calculateTechnicalScore`/`calculateSupplyDemandScore`에 `async` + `await pool.query()` 적용. pg가 `NUMERIC`/`BIGINT`를 string으로 반환하므로 `per`/`pbr`/`volume`/`institution`/`foreign_net` 모두 `Number()` 캐스팅. `calculateTrendScore`와 `calculateHoldingOpinion`은 DB 미접근이라 동기 유지 (불필요한 async 오염 방지).
-  - **`generateAlerts` async + KST SQL**: 모듈 스코프 `hasDuplicate`/`dailyLimitReached`/`insertAlert` 모두 async. 빈도 가드 SQL이 `DATE(created_at, 'localtime') = DATE('now', 'localtime')` → `(created_at AT TIME ZONE 'Asia/Seoul')::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`. 이 교체를 놓치면 KST 자정 전후 오작동.
-  - **남은 Step 9~14**: `getStockData()` async + `withTransaction` 교체 (PG-3), 라우터 28개 전수 교체, BATCH_SIZE 5→3, Puppeteer 제거, 데이터 마이그레이션, dataFreshness 주석 업데이트. **현재 서버 기동 불가 — 다음 세션에서 완료해야 함**.
+- **14차 PostgreSQL 전환 완료 + UI/UX 7건**:
+  - **DB 레이어**: `connection.js` → `pg.Pool` (max 5, 5s timeout) + `query()`/`withTransaction()` 헬퍼. `schema.js` PG DDL (TIMESTAMPTZ/BIGSERIAL/NUMERIC, eps/category/source 내재화, FK `ON DELETE CASCADE`). `migrate.js` `information_schema.columns` 기반 검증(신규 DB는 no-op). `helpers/queryBuilder.js` 동적 플레이스홀더 `$1,$2…` (PG-4/5 해소).
+  - **도메인 로직 async**: `helpers/sma.js`, `analysis/scoring.js` 3개(trend/holding은 DB 미접근 동기 유지), `analysis/indicators.js`, `alert/service.js`의 `generateAlerts`/`hasDuplicate`/`dailyLimitReached`/`insertAlert`. KST 빈도 가드 SQL `(created_at AT TIME ZONE 'Asia/Seoul')::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`. 중복 함수는 모듈 스코프로 추출(로직-1 해소).
+  - **`getStockData()` 전면 재작성**: `withTransaction`로 stock_history/investor_history 2개 트랜잭션 교체 (PG-3 해소). 모든 스코어링 호출에 `await` + `pool` 전달. `generateAlerts(pool, ...)`. `CURRENT_TIMESTAMP` → `NOW()`. pg NUMERIC → `Number()` 캐스팅. API 에러 시 `buildFallback()`이 `market_opinion || '중립적'`로 보정(로직-2 해소).
+  - **라우터 6개 × 28 엔드포인트 전부 async + `await query()` 전환**: alert/watchlist/system/portfolio/stock/analysis. `portfolio.PUT`과 `analysis.screener`의 동적 SQL은 `queryBuilder`로 플레이스홀더 번호 안전하게 조립. `stock.DELETE`는 `ON DELETE CASCADE` 의존으로 6줄 → 2줄 단순화.
+  - **`data.js` → `registerInitialData(pool)`**: 모듈 최상위 부작용 제거, `server.js`의 top-level await에서 명시적 호출. 트랜잭션 2개(stocks/recommended_stocks)로 idle connection 최소화.
+  - **`server.js` top-level await 재작성**: `initSchema → runMigrations → registerInitialData → setupCleanup(pool) → setupScheduler → app.listen` 순서. `scheduler.js`도 `setupCleanup(pool)`로 pool 주입, cleanupOldData async 화.
+  - **Puppeteer 완전 제거**: `scrapers/toss.js` 삭제, `stock_analysis.chart_path` 컬럼 삭제, `StockDetailView`의 "토스증권 차트 캡처" 섹션 제거, `types/stock.ts`의 `chartPath` 필드 제거, `stock/router.js`의 `refresh` 엔드포인트 단순화. Render에서 Chromium 설치 불필요.
+  - **BATCH_SIZE 5→3**: Neon 풀 5와 경합 회피 (stock/service.js). 로그 주기도 25→15로 조정.
+  - **advice 문구 중립화 (5-7)**: "매수에 유리한 조건입니다" → "긍정적인 지표가 많아요", "분할매수 관점에서 접근을 권장합니다" → "지표를 직접 확인해보세요", "보수적 접근이 필요합니다" → "주의가 필요한 상태예요". 앱스토어 심사 대비 투자 권유 어조 제거.
+  - **`alerts.source` 컬럼 (5-1)**: `'holding'`/`'watchlist'` 태깅. `generateAlerts`에서 holders는 항상 `'holding'`, watchers는 holderSet 조회로 결정. 프론트 `ALERT_TYPE_LABELS` 옆에 blue/purple 출처 뱃지 표시.
+  - **UI/UX 보완 (초보자 대응)**:
+    - DashboardPage 차트: 마지막 X축 라벨 "(오늘)" 표시, 보유종목 0개일 때 "📈 종목을 추가하면 수익률 그래프를..." CTA 폴백 + `onNavigate('analysis')` 버튼.
+    - App.tsx: health timeout 메시지를 "서버가 깨어나는 중이에요. 약 30초 후 다시 시도해 주세요"로 구체화. health 응답의 `lastSync` 검사 → null이거나 24h+ 경과 시 amber 서브 배너 표시.
+    - App.tsx 빈 검색 결과: "전체 종목 보기" + **"종목코드로 추가"** 2개 버튼 (SettingsPage 경로).
+    - App.tsx 알림 패널: 각 알림에 `source` 뱃지, `created_at`을 `getDataFreshnessShort()` 포맷(“3분 전” 등)으로, 첫 진입 안내 카드에 "SMA 관련 알림은 보유 종목에만 발송돼요" 한 줄 추가.
+    - `ErrorBanner`: `autoRetryMs` prop 추가. 동일 error 메시지당 1회만 자동 재시도(무한 루프 방지). DashboardPage에서 `autoRetryMs={3000}`로 Neon sleep 해제 대응.
+    - RecommendationsPage 빈 상태: "지금 데이터를 분석 중이에요. 하루 1회 오전 8시에 갱신돼요."로 명시.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건
@@ -57,7 +65,7 @@
 - recommended_stocks.fair_price ON CONFLICT 시 갱신 안 함 (최초 등록 후 고정). reason/score는 서버 재시작마다 코드 값으로 초기화 (data.js에 경고 주석)
 
 ### 3. 프론트엔드 개발
-**기본 구조**: 7개 페이지 + 9개 컴포넌트 (ErrorBanner 포함) + 4개 도메인 스토어 + Toast
+**기본 구조**: 7개 페이지 + 9개 컴포넌트 (ErrorBanner는 `autoRetryMs` 지원) + 4개 도메인 스토어 + Toast
 - 반응형: PC 사이드바 + 모바일 하단 탭바 5개(대시보드/포트폴리오/추천/알림/설정)
 - 관심종목: 모바일은 포트폴리오 내 탭(A안), PC는 사이드바 독립 페이지 — 둘 다 `WatchlistContent` 공유
 
@@ -136,8 +144,8 @@
 | ~~지표 가용성 플래그 부재~~ | ~~신규 종목·서버 초기에 RSI/MACD 부정확~~ | ✅ 11차에서 `*_available` 플래그 추가 |
 | ~~computeSMA 도메인 의존성~~ | ~~portfolio → analysis 단방향 위배~~ | ✅ 11차에서 `helpers/sma.js`로 재이동 |
 | device_id 보안 | CORS+Rate limit 적용 | **Phase 5**로 이동 (구독 도입 시점). HMAC + B안 강제 재등록 + 사용자 안내 화면 |
-| **SQLite 블로킹** | **PostgreSQL 전환 Step 1~8 완료 (14차)**, Step 9~14 진행 중 | ✅ pg.Pool + schema/migrate/queryBuilder + 스코어링 3개 async + generateAlerts async + KST SQL · ⏳ getStockData async + 라우터 28개 교체 + 데이터 마이그레이션 |
-| Puppeteer 의존 (toss.js) | Render에 Chromium 필요 | P2-3: stock_history OHLCV 기반 자체 차트 렌더링으로 대체 → toss.js 제거, chart_path 컬럼 삭제 |
+| **SQLite 블로킹** | ✅ **14차 완료** | pg.Pool + schema/migrate/queryBuilder + 스코어링/indicators/sma async + getStockData + `withTransaction` + 6개 라우터 28 엔드포인트 전수 교체 + BATCH_SIZE 5→3. 남은 작업: 데이터 마이그레이션 스크립트(TODO). |
+| Puppeteer 의존 (toss.js) | ✅ **14차 완료** | `scrapers/toss.js` 삭제 + `chart_path` 컬럼 제거 + StockDetailView 캡처 UI 제거. stock_history OHLCV는 Recharts로 자체 렌더링. |
 | 스크래핑 의존 (네이버) | 핵심 데이터 네이버 스크래핑 | 장기: KIS/KRX 분리 평가 (시나리오 B 우선) |
 | 알림 이중 발송 | 배치 알림만 존재 | P3-6: Push+배치 단일 파이프라인. 일 N건 빈도 가드는 이미 11차에서 적용 완료 |
 | 스코어 임계값 검증 | 임시값(7/4점), 주석 추가됨 | P2-2: 적재 스크립트 즉시 작성 → P4: 백테스팅 |

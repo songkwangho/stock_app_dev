@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface ErrorBannerProps {
@@ -7,12 +8,25 @@ interface ErrorBannerProps {
   kind?: 'network' | 'server' | 'unknown';
   // 다시 시도 핸들러
   onRetry?: () => void;
+  // 자동 재시도 지연 (ms). 지정 시 N ms 후 한 번 onRetry()를 호출하고 "자동 재시도 중" 문구를 표시한다.
+  // Neon 무료 플랜 sleep 해제(1~3초)/Render 콜드 스타트 구간에서 사용자가 수동으로 누르지 않아도 복구되도록 돕는다.
+  autoRetryMs?: number;
 }
 
 // 공통 에러 표시 컴포넌트.
 // 각 페이지가 따로 에러 UI를 만들지 않고 isLoading + error 상태에 이 컴포넌트를 끼우면 된다.
 // PostgreSQL 전환 후 DB 연결 실패 케이스가 늘어나므로 통일된 사용자 안내가 필요하다.
-const ErrorBanner = ({ error, kind = 'unknown', onRetry }: ErrorBannerProps) => {
+const ErrorBanner = ({ error, kind = 'unknown', onRetry, autoRetryMs }: ErrorBannerProps) => {
+  // 동일 error 메시지당 1회만 자동 재시도 (무한 루프 방지).
+  const retriedKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!error || !autoRetryMs || !onRetry) return;
+    if (retriedKey.current === error) return;
+    retriedKey.current = error;
+    const t = setTimeout(() => { onRetry(); }, autoRetryMs);
+    return () => clearTimeout(t);
+  }, [error, autoRetryMs, onRetry]);
+
   if (!error) return null;
   const headline =
     kind === 'network' ? '네트워크 연결을 확인해 주세요'
@@ -24,6 +38,9 @@ const ErrorBanner = ({ error, kind = 'unknown', onRetry }: ErrorBannerProps) => 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-red-300">⚠️ {headline}</p>
         <p className="text-xs text-slate-400 mt-1 leading-relaxed">{error}</p>
+        {autoRetryMs && onRetry && (
+          <p className="text-[10px] text-slate-500 mt-1">잠시 후 자동으로 다시 시도해요...</p>
+        )}
       </div>
       {onRetry && (
         <button

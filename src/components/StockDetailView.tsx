@@ -305,25 +305,6 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Toss Chart Capture */}
-            <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
-              <h3 className="text-lg font-semibold mb-6 flex items-center justify-between">
-                <span>토스증권 실시간 차트 캡처</span>
-                <span className="text-xs text-slate-500 font-normal">Toss Securities Original Chart</span>
-              </h3>
-              {stockDetail?.chartPath ? (
-                <div className="w-full rounded-xl overflow-hidden border border-slate-800 mb-6">
-                  <img src={`http://localhost:3001${stockDetail.chartPath}`} alt="Toss Chart" className="w-full h-auto object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                </div>
-              ) : (
-                <div className="w-full h-48 bg-slate-900/50 rounded-xl flex flex-col items-center justify-center border border-dashed border-slate-800 mb-6 text-slate-600">
-                  <RefreshCw className="animate-spin mb-2" size={24} />
-                  <p className="text-xs">차트 이미지를 캡처 중입니다...</p>
-                </div>
-              )}
-            </div>
-
             {/* Candlestick + Volume Chart */}
             <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800/50">
               <h3 className="text-lg font-semibold mb-2 flex items-center justify-between">

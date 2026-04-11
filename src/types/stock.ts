@@ -55,7 +55,6 @@ export interface Recommendation {
   market_opinion?: MarketOpinion;
   source?: 'manual' | 'algorithm';
   tossUrl?: string;
-  chartPath?: string;
 }
 
 export interface ScoringBreakdown {
@@ -89,7 +88,6 @@ export interface StockDetail {
   advice?: string;
   market_opinion?: MarketOpinion;
   tossUrl?: string;
-  chartPath?: string;
   scoringBreakdown?: ScoringBreakdown;
 }
 
@@ -140,6 +138,7 @@ export interface Alert {
   code: string;
   name: string;
   type: string;
+  source?: 'holding' | 'watchlist';
   message: string;
   read: number;
   created_at: string;

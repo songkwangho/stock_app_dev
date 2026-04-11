@@ -1,16 +1,18 @@
-import db from '../../db/connection.js';
+import pool, { query, withTransaction } from '../../db/connection.js';
 import axios from 'axios';
 import { getCached, setCache } from '../../helpers/cache.js';
 import { NAVER_FINANCE_URL, mapToCategory } from '../../scrapers/naver.js';
-import { captureChart } from '../../scrapers/toss.js';
 import { calculateValuationScore, calculateTechnicalScore, calculateSupplyDemandScore, calculateTrendScore } from '../analysis/scoring.js';
 import { generateAlerts } from '../alert/service.js';
 
+// Neon 무료 플랜은 풀 5 제한 — 동시 종목 fetch가 5를 넘지 않도록 BATCH_SIZE를 3으로 낮춤.
+// (한 종목 sync마다 stock_history/investor_history upsert로 트랜잭션 클라이언트 1개를 점유할 수 있음)
+const BATCH_SIZE = 3;
+
 // ===== Data Sync: all registered major stocks =====
 export async function syncAllStocks() {
-    const allStocks = db.prepare('SELECT code, name FROM stocks ORDER BY code').all();
+    const { rows: allStocks } = await query('SELECT code, name FROM stocks ORDER BY code');
     console.log(`Syncing ${allStocks.length} stocks...`);
-    const BATCH_SIZE = 5;
     let synced = 0;
     for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
         const batch = allStocks.slice(i, i + BATCH_SIZE);
@@ -20,7 +22,7 @@ export async function syncAllStocks() {
             ))
         );
         synced += batch.length;
-        if (synced % 25 === 0) console.log(`  ... ${synced}/${allStocks.length} synced`);
+        if (synced % 15 === 0) console.log(`  ... ${synced}/${allStocks.length} synced`);
     }
     console.log(`Stock sync complete (${synced} stocks).`);
 }
@@ -39,6 +41,48 @@ export function scheduleDaily8AM() {
         // After first trigger, repeat every 24 hours
         setInterval(syncAllStocks, 24 * 60 * 60 * 1000);
     }, msUntil8AM);
+}
+
+// 보조 유틸: pg numeric(string) → number, null 유지
+function num(v) {
+    if (v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+}
+
+// DB 스냅샷 fallback — API 실패 시 기존 데이터를 반환.
+// market_opinion이 없으면 '중립적'으로 보정 (null이 프론트로 그대로 나가던 버그 수정).
+async function buildFallback(code) {
+    const { rows: stockRows } = await query('SELECT * FROM stocks WHERE code = $1', [code]);
+    if (stockRows.length === 0) return null;
+    const stock = stockRows[0];
+    const { rows: historyRows } = await query(
+        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = $1 ORDER BY date DESC LIMIT 40',
+        [code]
+    );
+    const { rows: analysisRows } = await query('SELECT * FROM stock_analysis WHERE code = $1', [code]);
+    const analysisData = analysisRows[0];
+    return {
+        ...stock,
+        per: num(stock.per),
+        pbr: num(stock.pbr),
+        roe: num(stock.roe),
+        eps_current: num(stock.eps_current),
+        eps_previous: num(stock.eps_previous),
+        history: historyRows.map(h => ({
+            date: h.date,
+            price: num(h.price),
+            open: num(h.open),
+            high: num(h.high),
+            low: num(h.low),
+            volume: num(h.volume),
+        })).reverse(),
+        investorData: [],
+        analysis: analysisData?.analysis,
+        advice: analysisData?.advice,
+        market_opinion: analysisData?.opinion || '중립적',
+        tossUrl: analysisData?.toss_url,
+    };
 }
 
 // Helper function to fetch and store stock data (with cache)
@@ -80,30 +124,26 @@ export async function getStockData(code, fallbackName = null) {
         }
 
         if (allMatches.length === 0) {
-            const stock = db.prepare('SELECT * FROM stocks WHERE code = ?').get(code);
-            const history = db.prepare('SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
-            const result = stock ? { ...stock, history: history.reverse() } : null;
+            const result = await buildFallback(code);
             if (result) setCache(code, result);
             return result;
         }
 
         // Save History (OHLCV) in transaction
-        const insertHistory = db.prepare(`
-            INSERT INTO stock_history (code, date, price, open, high, low, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(code, date) DO UPDATE SET
-                price = excluded.price, open = excluded.open,
-                high = excluded.high, low = excluded.low, volume = excluded.volume
-        `);
-        const transaction = db.transaction((matches) => {
-            for (const match of matches) {
+        await withTransaction(async (client) => {
+            for (const match of allMatches) {
                 // match groups: [1]=date, [2]=open, [3]=high, [4]=low, [5]=close, [6]=volume
-                insertHistory.run(code, match[1],
+                await client.query(`
+                    INSERT INTO stock_history (code, date, price, open, high, low, volume)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT(code, date) DO UPDATE SET
+                        price = EXCLUDED.price, open = EXCLUDED.open,
+                        high = EXCLUDED.high, low = EXCLUDED.low, volume = EXCLUDED.volume
+                `, [code, match[1],
                     parseInt(match[5]), parseInt(match[2]),
-                    parseInt(match[3]), parseInt(match[4]), parseInt(match[6]));
+                    parseInt(match[3]), parseInt(match[4]), parseInt(match[6])]);
             }
         });
-        transaction(allMatches);
 
         // --- Process investor data ---
         let investorData = [];
@@ -128,20 +168,18 @@ export async function getStockData(code, fallbackName = null) {
 
                 // Persist investor data to investor_history
                 if (investorData.length > 0) {
-                    const insertInvestor = db.prepare(`
-                        INSERT INTO investor_history (code, date, institution, foreign_net, individual)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(code, date) DO UPDATE SET
-                            institution = excluded.institution,
-                            foreign_net = excluded.foreign_net,
-                            individual = excluded.individual
-                    `);
-                    const investorTx = db.transaction((rows) => {
-                        for (const r of rows) {
-                            insertInvestor.run(code, r.date, r.institution, r.foreign, r.individual);
+                    await withTransaction(async (client) => {
+                        for (const r of investorData) {
+                            await client.query(`
+                                INSERT INTO investor_history (code, date, institution, foreign_net, individual)
+                                VALUES ($1, $2, $3, $4, $5)
+                                ON CONFLICT(code, date) DO UPDATE SET
+                                    institution = EXCLUDED.institution,
+                                    foreign_net = EXCLUDED.foreign_net,
+                                    individual = EXCLUDED.individual
+                            `, [code, r.date, r.institution, r.foreign, r.individual]);
                         }
                     });
-                    investorTx(investorData);
                 }
             } catch (investorError) {
                 console.error(`Investor Parse Error for ${code}:`, investorError.message);
@@ -150,6 +188,7 @@ export async function getStockData(code, fallbackName = null) {
 
         // --- Process main page metrics ---
         let per = null, pbr = null, roe = null, targetPrice = null;
+        let epsCurrent = null, epsPrevious = null;
         let html = '';
         if (mainPageResult.status === 'fulfilled') {
             try {
@@ -190,8 +229,8 @@ export async function getStockData(code, fallbackName = null) {
                 const epsCurRegex = /th_cop_anal17(?:[\s\S]*?<td.*?>){4}\s*([\d,.-]+)/;
                 const epsPrevMatch = html.match(epsPrevRegex);
                 const epsCurMatch = html.match(epsCurRegex);
-                var epsPrevious = (epsPrevMatch && epsPrevMatch[1].trim() !== '-') ? parseFloat(epsPrevMatch[1].replace(/,/g, '')) : null;
-                var epsCurrent = (epsCurMatch && epsCurMatch[1].trim() !== '-') ? parseFloat(epsCurMatch[1].replace(/,/g, '')) : null;
+                epsPrevious = (epsPrevMatch && epsPrevMatch[1].trim() !== '-') ? parseFloat(epsPrevMatch[1].replace(/,/g, '')) : null;
+                epsCurrent = (epsCurMatch && epsCurMatch[1].trim() !== '-') ? parseFloat(epsCurMatch[1].replace(/,/g, '')) : null;
 
                 console.log(`Scraped for ${code}: PER=${per}, PBR=${pbr}, ROE=${roe}, TP=${targetPrice}, EPS=${epsPrevious}→${epsCurrent}`);
             } catch (scrapingError) {
@@ -202,13 +241,24 @@ export async function getStockData(code, fallbackName = null) {
         const latestMatch = allMatches[allMatches.length - 1];
         const latestPrice = parseInt(latestMatch[5]);
 
-        const history = db.prepare('SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
+        const { rows: historyRows } = await query(
+            'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = $1 ORDER BY date DESC LIMIT 40',
+            [code]
+        );
+        const history = historyRows.map(h => ({
+            date: h.date,
+            price: num(h.price),
+            open: num(h.open),
+            high: num(h.high),
+            low: num(h.low),
+            volume: num(h.volume),
+        }));
 
-        const existing = db.prepare('SELECT name, category FROM stocks WHERE code = ?').get(code);
+        const { rows: existingRows } = await query('SELECT name, category FROM stocks WHERE code = $1', [code]);
+        const existing = existingRows[0];
 
         let industry = null;
         try {
-            // Updated industry regex: more flexible with attributes
             const indMatch = html.match(/type=upjong&no=\d+["'][^>]*>([^<]+)<\/a>/);
             if (indMatch) industry = indMatch[1].trim();
             console.log(`Detected industry for ${code}: ${industry}`);
@@ -235,24 +285,24 @@ export async function getStockData(code, fallbackName = null) {
             nameToSave = existing.name;
         }
 
-        db.prepare(`
+        await query(`
             INSERT INTO stocks (code, name, price, change, change_rate, per, pbr, roe, target_price, category, eps_current, eps_previous, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
             ON CONFLICT(code) DO UPDATE SET
-                price = excluded.price,
-                name = excluded.name,
-                per = excluded.per,
-                pbr = excluded.pbr,
-                roe = excluded.roe,
-                target_price = excluded.target_price,
-                category = excluded.category,
-                eps_current = excluded.eps_current,
-                eps_previous = excluded.eps_previous,
-                last_updated = CURRENT_TIMESTAMP
-        `).run(code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave, epsCurrent || null, epsPrevious || null);
+                price = EXCLUDED.price,
+                name = EXCLUDED.name,
+                per = EXCLUDED.per,
+                pbr = EXCLUDED.pbr,
+                roe = EXCLUDED.roe,
+                target_price = EXCLUDED.target_price,
+                category = EXCLUDED.category,
+                eps_current = EXCLUDED.eps_current,
+                eps_previous = EXCLUDED.eps_previous,
+                last_updated = NOW()
+        `, [code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave, epsCurrent, epsPrevious]);
 
         // Advanced Analysis Generation Logic
-        const historyRev = history.reverse();
+        const historyRev = [...history].reverse();
         const getSMA = (days) => {
             if (historyRev.length < days) return null;
             const slice = historyRev.slice(-days);
@@ -264,14 +314,14 @@ export async function getStockData(code, fallbackName = null) {
 
         let analysis = '';
         let advice = '';
-        let market_opinion = '중립적'; // MarketOpinion: always calculated via 10-point scoring
+        let market_opinion = '중립적';
         let scoringBreakdown = null;
 
         // Always calculate MarketOpinion (10-point scoring) for all stocks
         {
-            const valuation = calculateValuationScore(db, code, per, pbr, roe, latestPrice, targetPrice, epsCurrent, epsPrevious);
-            const technical = calculateTechnicalScore(db, code);
-            const supplyDemand = calculateSupplyDemandScore(db, code);
+            const valuation = await calculateValuationScore(pool, code, per, pbr, roe, latestPrice, targetPrice, epsCurrent, epsPrevious);
+            const technical = await calculateTechnicalScore(pool, code);
+            const supplyDemand = await calculateSupplyDemandScore(pool, code);
             const trend = calculateTrendScore(latestPrice, sma5, sma20);
 
             const totalScore = parseFloat((valuation.total + technical.total + supplyDemand.total + trend.total).toFixed(2));
@@ -302,50 +352,44 @@ export async function getStockData(code, fallbackName = null) {
             analysis += `[종합점수 ${totalScore}/10] 밸류에이션 ${valuation.total}/3, 기술지표 ${technical.total}/3, 수급 ${supplyDemand.total}/2, 추세 ${trend.total}/2.`;
 
             // 임시 임계값 — Phase 4 백테스팅 후 데이터 기반 최적화 예정
+            // advice 문구는 앱스토어 심사 대비 중립/서술형으로 작성 (투자 권유로 해석되지 않도록).
             if (totalScore >= 7.0) {
                 market_opinion = '긍정적';
-                advice = `종합점수 ${totalScore}점으로 매수에 유리한 조건입니다. `;
-                advice += valuation.total >= 2 ? '밸류에이션이 섹터 대비 저평가 상태이며, ' : '';
-                advice += technical.total >= 2 ? '기술적 지표도 매수를 지지합니다. ' : '';
-                advice += supplyDemand.total >= 1.5 ? '외국인/기관의 연속 순매수도 긍정적입니다.' : '';
+                advice = `종합점수 ${totalScore}점으로 긍정적인 지표가 많아요. `;
+                advice += valuation.total >= 2 ? '밸류에이션이 섹터 대비 낮은 편이며, ' : '';
+                advice += technical.total >= 2 ? '기술적 지표도 우호적인 흐름이에요. ' : '';
+                advice += supplyDemand.total >= 1.5 ? '외국인·기관 수급도 우호적이에요.' : '';
             } else if (totalScore >= 4.0) {
                 market_opinion = '중립적';
-                advice = `종합점수 ${totalScore}점으로 적극적 매수보다는 관망이 적절합니다. `;
-                if (valuation.total < 1) advice += '밸류에이션 매력이 부족하거나 ';
+                advice = `종합점수 ${totalScore}점으로 강한 방향성은 보이지 않아요. `;
+                if (valuation.total < 1) advice += '밸류에이션 매력이 낮고, ';
                 if (technical.total < 1) advice += '기술적 지표가 약세를 보이고 있어 ';
-                advice += '분할매수 관점에서 접근을 권장합니다.';
+                advice += '지표를 직접 확인해보세요.';
             } else {
                 market_opinion = '부정적';
-                advice = `종합점수 ${totalScore}점으로 보수적 접근이 필요합니다. `;
-                if (valuation.total < 1) advice += '밸류에이션 부담이 크고, ';
-                if (technical.total < 1) advice += '기술적 지표가 주의 신호를 보내고 있으며, ';
-                if (supplyDemand.total < 0.5) advice += '수급도 비우호적입니다.';
+                advice = `종합점수 ${totalScore}점으로 주의가 필요한 상태예요. `;
+                if (valuation.total < 1) advice += '밸류에이션 부담이 있고, ';
+                if (technical.total < 1) advice += '기술적 지표도 약세 흐름이며, ';
+                if (supplyDemand.total < 0.5) advice += '수급도 비우호적이에요.';
             }
         }
 
         const tossUrl = `https://tossinvest.com/stocks/${code}/order`;
 
-        // Capture chart in background (don't block response)
-        const chartPath = `/charts/${code}.png`;
-        captureChart(code).catch(e => console.error(`Background chart capture error for ${code}:`, e.message));
-
-        console.log(`Saving analysis for ${code} with chartPath: ${chartPath}`);
-
         // Generate alerts for significant events
-        generateAlerts(db, code, nameToSave, latestPrice, sma5, targetPrice, market_opinion);
+        await generateAlerts(pool, code, nameToSave, latestPrice, sma5, targetPrice);
 
         // Save MarketOpinion to DB (공용, 비보유 기준)
-        db.prepare(`
-            INSERT INTO stock_analysis (code, analysis, advice, opinion, toss_url, chart_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        await query(`
+            INSERT INTO stock_analysis (code, analysis, advice, opinion, toss_url, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
             ON CONFLICT(code) DO UPDATE SET
-                analysis = excluded.analysis,
-                advice = excluded.advice,
-                opinion = excluded.opinion,
-                toss_url = excluded.toss_url,
-                chart_path = excluded.chart_path,
-                created_at = CURRENT_TIMESTAMP
-        `).run(code, analysis, advice, market_opinion, tossUrl, chartPath);
+                analysis = EXCLUDED.analysis,
+                advice = EXCLUDED.advice,
+                opinion = EXCLUDED.opinion,
+                toss_url = EXCLUDED.toss_url,
+                created_at = NOW()
+        `, [code, analysis, advice, market_opinion, tossUrl]);
 
         const result = {
             code,
@@ -354,33 +398,20 @@ export async function getStockData(code, fallbackName = null) {
             change: "0",
             change_rate: "0.00",
             per, pbr, roe, targetPrice,
+            category: categoryToSave,
             history: historyRev,
             investorData,
             analysis,
             advice,
             market_opinion,
             tossUrl,
-            chartPath,
             scoringBreakdown
         };
         setCache(code, result);
         return result;
     } catch (error) {
         console.error(`API Error for ${code}:`, error.message);
-        const stock = db.prepare('SELECT * FROM stocks WHERE code = ?').get(code);
-        const history = db.prepare('SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date DESC LIMIT 40').all(code);
-        const analysisData = db.prepare('SELECT * FROM stock_analysis WHERE code = ?').get(code);
-
-        const fallback = stock ? {
-            ...stock,
-            history: history.reverse(),
-            investorData: [],
-            analysis: analysisData?.analysis,
-            advice: analysisData?.advice,
-            market_opinion: analysisData?.opinion,
-            tossUrl: analysisData?.toss_url,
-            chartPath: analysisData?.chart_path
-        } : null;
+        const fallback = await buildFallback(code);
         if (fallback) setCache(code, fallback);
         return fallback;
     }

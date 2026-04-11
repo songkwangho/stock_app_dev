@@ -69,9 +69,9 @@
 ### 갱신 시각 (`src/utils/dataFreshness.ts`)
 - `getDataFreshnessLabel(lastUpdated: string)`: "N분 전 (HH:MM, 장중 데이터/전일 종가)" — 종목 상세
 - `getDataFreshnessShort(lastUpdated: string)`: "N분 전" — 대시보드
-- **입력 형식**: 서버 DB timestamp. 두 형식 모두 처리:
-  - SQLite (현재): `CURRENT_TIMESTAMP` → `"YYYY-MM-DD HH:MM:SS"` (UTC, T/Z 없음)
-  - PostgreSQL (Phase 2-1 전환 후): `TIMESTAMPTZ` → ISO 8601 (`"2024-01-15T08:00:00.000Z"`)
+- **입력 형식**: 서버 DB timestamp. `parseServerDate()`가 두 형식을 모두 처리 (과거 SQLite 덤프 호환용):
+  - PostgreSQL (현재): `TIMESTAMPTZ` → ISO 8601 (`"2024-01-15T08:00:00.000Z"`) — `Z` 접미사 포함, `new Date()` 직접 파싱 가능
+  - SQLite (마이그레이션 이전 데이터): `CURRENT_TIMESTAMP` → `"YYYY-MM-DD HH:MM:SS"` (UTC, T/Z 없음)
 - **파싱 로직**: `parseServerDate()` 헬퍼가 정규식으로 `Z` / `+HH:MM` 접미사를 검사 — 있으면 `new Date(input)` 그대로, 없으면 (SQLite 형식) `T`와 `Z`를 추가해 명시 UTC로 해석. `new Date()` 직접 호출 금지 (SQLite 형식을 로컬 시간대로 해석해 KST와 9시간 오차 발생).
 - **KST 변환**: `Asia/Seoul` 타임존 명시. 클라이언트 시간대와 무관.
 - **장중 판단**: KST 평일 9~16시 자동 판단.
