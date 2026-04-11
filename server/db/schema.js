@@ -1,109 +1,111 @@
-export function initSchema(db) {
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS stocks (
-        code TEXT PRIMARY KEY,
-        name TEXT,
-        category TEXT,
-        price INTEGER,
-        change TEXT,
-        change_rate TEXT,
-        per REAL,
-        pbr REAL,
-        roe REAL,
-        target_price INTEGER,
-        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
+// PostgreSQL 초기 DDL — SQLite의 migrate.js로 추가되던 컬럼(eps_current, eps_previous,
+// chart_path, source, category 등)을 모두 초기 스키마에 내재화한다.
+// 신규 DB에서는 migrate.js가 사실상 불필요 (기존 SQLite 데이터 마이그레이션 검증용으로만 남김).
+export async function initSchema(pool) {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS stocks (
+            code         TEXT PRIMARY KEY,
+            name         TEXT,
+            category     TEXT,
+            price        INTEGER,
+            change       TEXT,
+            change_rate  TEXT,
+            per          NUMERIC(10,4),
+            pbr          NUMERIC(10,4),
+            roe          NUMERIC(10,4),
+            target_price INTEGER,
+            eps_current  NUMERIC(14,4),
+            eps_previous NUMERIC(14,4),
+            last_updated TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS holding_stocks (
-        device_id TEXT NOT NULL DEFAULT 'default',
-        code TEXT NOT NULL,
-        avg_price INTEGER,
-        weight INTEGER,
-        quantity INTEGER DEFAULT 0,
-        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (device_id, code),
-        FOREIGN KEY (code) REFERENCES stocks (code)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS holding_stocks (
+            device_id    TEXT NOT NULL DEFAULT 'default',
+            code         TEXT NOT NULL REFERENCES stocks (code) ON DELETE CASCADE,
+            avg_price    INTEGER,
+            weight       INTEGER,
+            quantity     INTEGER DEFAULT 0,
+            last_updated TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (device_id, code)
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS stock_history (
-        code TEXT,
-        date TEXT,
-        price INTEGER,
-        open INTEGER,
-        high INTEGER,
-        low INTEGER,
-        volume INTEGER,
-        PRIMARY KEY (code, date)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS stock_history (
+            code   TEXT NOT NULL,
+            date   TEXT NOT NULL,
+            price  INTEGER,
+            open   INTEGER,
+            high   INTEGER,
+            low    INTEGER,
+            volume BIGINT,
+            PRIMARY KEY (code, date)
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS recommended_stocks (
-        code TEXT PRIMARY KEY,
-        reason TEXT,
-        fair_price INTEGER,
-        score INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (code) REFERENCES stocks (code)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS recommended_stocks (
+            code       TEXT PRIMARY KEY REFERENCES stocks (code) ON DELETE CASCADE,
+            reason     TEXT,
+            fair_price INTEGER,
+            score      INTEGER,
+            source     TEXT DEFAULT 'manual',
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS stock_analysis (
-        code TEXT PRIMARY KEY,
-        analysis TEXT,
-        advice TEXT,
-        opinion TEXT,
-        toss_url TEXT,
-        chart_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (code) REFERENCES stocks (code)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS stock_analysis (
+            code       TEXT PRIMARY KEY REFERENCES stocks (code) ON DELETE CASCADE,
+            analysis   TEXT,
+            advice     TEXT,
+            opinion    TEXT,
+            toss_url   TEXT,
+            chart_path TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL DEFAULT 'default',
-        code TEXT NOT NULL,
-        name TEXT,
-        type TEXT NOT NULL,
-        message TEXT NOT NULL,
-        read INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS alerts (
+            id         BIGSERIAL PRIMARY KEY,
+            device_id  TEXT NOT NULL DEFAULT 'default',
+            code       TEXT NOT NULL,
+            name       TEXT,
+            type       TEXT NOT NULL,
+            message    TEXT NOT NULL,
+            read       INTEGER DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS watchlist (
-        device_id TEXT NOT NULL DEFAULT 'default',
-        code TEXT NOT NULL,
-        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (device_id, code),
-        FOREIGN KEY (code) REFERENCES stocks (code)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS watchlist (
+            device_id TEXT NOT NULL DEFAULT 'default',
+            code      TEXT NOT NULL REFERENCES stocks (code) ON DELETE CASCADE,
+            added_at  TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (device_id, code)
+        )
+    `);
 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS investor_history (
-        code TEXT NOT NULL,
-        date TEXT NOT NULL,
-        institution INTEGER,
-        foreign_net INTEGER,
-        individual INTEGER,
-        PRIMARY KEY (code, date)
-      )
-    `).run();
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS investor_history (
+            code         TEXT NOT NULL,
+            date         TEXT NOT NULL,
+            institution  BIGINT,
+            foreign_net  BIGINT,
+            individual   BIGINT,
+            PRIMARY KEY (code, date)
+        )
+    `);
 
     // Indices
-    db.prepare('CREATE INDEX IF NOT EXISTS idx_investor_history_code_date ON investor_history(code, date)').run();
-    db.prepare('CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date)').run();
-    db.prepare('CREATE INDEX IF NOT EXISTS idx_stocks_category ON stocks(category)').run();
-    db.prepare('CREATE INDEX IF NOT EXISTS idx_alerts_device_read ON alerts(device_id, read, created_at)').run();
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_investor_history_code_date ON investor_history(code, date)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_stocks_category ON stocks(category)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_alerts_device_read ON alerts(device_id, read, created_at)');
 
-    console.log('Database schema initialized.');
+    console.log('PostgreSQL schema initialized.');
 }

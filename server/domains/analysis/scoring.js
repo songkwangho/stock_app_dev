@@ -5,13 +5,17 @@ export function median(arr) {
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-// computeSMA는 도메인 간 의존성 회피를 위해 ../../helpers/sma.js로 이동했다.
+// computeSMA는 도메인 간 의존성 회피를 위해 ../../helpers/sma.js에 있다 — 중복 정의 금지.
 // 분석 도메인이 SMA를 직접 쓸 일이 생기면 helpers에서 import.
+//
+// PostgreSQL 전환 메모:
+// - DB 접근 함수는 async (첫 인자 pool). calculateHoldingOpinion/calculateTrendScore는 DB 미접근이라 동기 유지.
+// - pg는 NUMERIC을 string으로 반환하므로 Number() 캐스팅 필요.
 
 // Valuation Score: 0.0 ~ 3.0
-export function calculateValuationScore(db, code, per, pbr, roe, price, targetPrice, epsCurrent, epsPrevious) {
-    const stock = db.prepare('SELECT category FROM stocks WHERE code = ?').get(code);
-    const category = stock?.category;
+export async function calculateValuationScore(pool, code, per, pbr, roe, price, targetPrice, epsCurrent, epsPrevious) {
+    const { rows: stockRows } = await pool.query('SELECT category FROM stocks WHERE code = $1', [code]);
+    const category = stockRows[0]?.category;
     let per_negative = false;
     let low_confidence = false;
 
@@ -20,9 +24,11 @@ export function calculateValuationScore(db, code, per, pbr, roe, price, targetPr
         perScore = 0;
         per_negative = true;
     } else if (per && per > 0 && category) {
-        const peers = db.prepare(
-            'SELECT per FROM stocks WHERE category = ? AND per > 0 AND per < 200 AND code != ?'
-        ).all(category, code).map(r => r.per);
+        const { rows: peerRows } = await pool.query(
+            'SELECT per FROM stocks WHERE category = $1 AND per > 0 AND per < 200 AND code != $2',
+            [category, code]
+        );
+        const peers = peerRows.map(r => Number(r.per));
         if (peers.length < 5) low_confidence = true;
         if (peers.length >= 3) {
             const sectorPer = median(peers);
@@ -38,9 +44,11 @@ export function calculateValuationScore(db, code, per, pbr, roe, price, targetPr
 
     let pbrScore = 0;
     if (pbr && pbr > 0 && category) {
-        const peers = db.prepare(
-            'SELECT pbr FROM stocks WHERE category = ? AND pbr > 0 AND pbr < 20 AND code != ?'
-        ).all(category, code).map(r => r.pbr);
+        const { rows: peerRows } = await pool.query(
+            'SELECT pbr FROM stocks WHERE category = $1 AND pbr > 0 AND pbr < 20 AND code != $2',
+            [category, code]
+        );
+        const peers = peerRows.map(r => Number(r.pbr));
         if (peers.length < 5 && !low_confidence) low_confidence = true;
         if (peers.length >= 3) {
             const sectorPbr = median(peers);
@@ -91,10 +99,20 @@ export function calculateValuationScore(db, code, per, pbr, roe, price, targetPr
 }
 
 // Technical Score: 0.0 ~ 3.0
-export function calculateTechnicalScore(db, code) {
-    const history = db.prepare(
-        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = ? ORDER BY date ASC'
-    ).all(code);
+export async function calculateTechnicalScore(pool, code) {
+    const { rows: rawHistory } = await pool.query(
+        'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = $1 ORDER BY date ASC',
+        [code]
+    );
+    // pg는 NUMERIC/BIGINT를 string으로 반환 — 명시적 캐스팅.
+    const history = rawHistory.map(h => ({
+        date: h.date,
+        price: Number(h.price),
+        open: Number(h.open),
+        high: Number(h.high),
+        low: Number(h.low),
+        volume: Number(h.volume),
+    }));
     if (history.length < 15) return { total: 1.5, detail: {} };
 
     const prices = history.map(h => h.price);
@@ -187,10 +205,16 @@ export function calculateTechnicalScore(db, code) {
 // Supply/Demand Score: 0.0 ~ 2.0 (가중 감쇠 방식)
 // 스코어 계산: 최근 10일 순매수일에 0.8^i 가중치 부여 → 정규화
 // 연속 매수일 카운트: 스코어 계산에 사용하지 않음, UI 표시용으로만 detail에 반환
-export function calculateSupplyDemandScore(db, code) {
-    const rows = db.prepare(
-        'SELECT date, institution, foreign_net FROM investor_history WHERE code = ? ORDER BY date DESC LIMIT 20'
-    ).all(code);
+export async function calculateSupplyDemandScore(pool, code) {
+    const { rows: rawRows } = await pool.query(
+        'SELECT date, institution, foreign_net FROM investor_history WHERE code = $1 ORDER BY date DESC LIMIT 20',
+        [code]
+    );
+    const rows = rawRows.map(r => ({
+        date: r.date,
+        institution: Number(r.institution),
+        foreign_net: Number(r.foreign_net),
+    }));
     if (rows.length < 3) return { total: 0, detail: {} };
 
     const DECAY = 0.8; // 하루마다 20% 감쇠
@@ -231,7 +255,7 @@ export function calculateSupplyDemandScore(db, code) {
     };
 }
 
-// Trend Score: 0.0 ~ 2.0
+// Trend Score: 0.0 ~ 2.0 (DB 미접근, 동기 유지)
 export function calculateTrendScore(latestPrice, sma5, sma20) {
     if (!sma5 || !sma20) return { total: 1.0, detail: { reason: '이평선 데이터 부족' } };
     if (latestPrice > sma5 && sma5 > sma20) {
@@ -245,7 +269,7 @@ export function calculateTrendScore(latestPrice, sma5, sma20) {
     }
 }
 
-// Holding Opinion (runtime, not saved to DB)
+// Holding Opinion (runtime, not saved to DB — DB 미접근, 동기 유지)
 export function calculateHoldingOpinion(avgPrice, currentPrice, sma5, sma20) {
     if (!avgPrice || !currentPrice) return '보유';
     const lossRate = (currentPrice - avgPrice) / avgPrice;

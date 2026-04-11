@@ -39,6 +39,16 @@
   - **MajorStocksPage 삭제 확인 모달**: window.confirm 대신 모달. cascade 삭제 위험(보유·관심·알림) 명시.
   - **DashboardPage 차트 동적 색상**: 손실 상태(`avgProfitRate < 0`)면 라인·그라디언트가 빨간색으로 전환. 차트 위에 풀 날짜 범위 표시 ("1월 15일 ~ 2월 4일"). 툴팁도 풀 날짜로 표시.
   - **평단가 폼 초보자 레이블**: "매수가 (1주당 산 가격)" → "내가 산 평균 가격 (원)" + 평균 계산 예시 힌트 + 수량 출처 안내. HoldingsAnalysisPage·StockDetailView 양쪽 동기화.
+- **14차 PostgreSQL 전환 Step 1~8 (Option B)**:
+  - **`generateAlerts` 중복 함수 추출**: holders/watchers 루프 내부의 `hasDuplicate`/`dailyLimitReached` 클로저를 모듈 스코프 함수로 추출. 한쪽만 고쳐 불일치가 발생할 위험 제거 (로직-1). SQLite 상태에서도 적용 → PG 전환 시 한 곳만 async 변환하면 됨.
+  - **`server/db/connection.js` → `pg.Pool`**: `query()`/`withTransaction(fn)` 헬퍼 export. Neon 무료 플랜 연결 수 제한 고려 `max: 5`, 5초 connection timeout.
+  - **`server/db/schema.js` 재작성**: 이전 migrate.js로 추가되던 `eps_current`/`eps_previous`/`chart_path`/`source`/`category` 모두 초기 DDL에 내재화 (PG-1 해소). `INTEGER AUTOINCREMENT` → `BIGSERIAL`, `REAL` → `NUMERIC(10,4)`, `DATETIME` → `TIMESTAMPTZ DEFAULT NOW()`, `volume`은 `BIGINT`. FK에 `ON DELETE CASCADE` 추가.
+  - **`server/db/migrate.js` 재작성**: `information_schema.columns` 기반 `columnExists()` 헬퍼로 PRAGMA 대체. SQLite `db.exec()` 멀티스테이트먼트 테이블 재생성(holding_stocks/watchlist)은 PG 신규 DB에서 불필요하므로 제거 (PG-2 해소). 신규 DB에서는 검증 로그만 출력하는 no-op에 가까움.
+  - **`server/helpers/queryBuilder.js` 신설**: `buildSetClause(fields, startIndex)`/`buildWhereClause(conditions, startIndex)` 두 유틸. SQLite `?`는 순서 무관이지만 PG `$1, $2…`는 인덱스 추적이 필요. Step 10에서 screener(PG-4)와 PUT /api/holdings(PG-5) 동적 SQL에 활용 예정.
+  - **`server/helpers/sma.js` async**: `computeSMA(pool, code)` 첫 인자 pool로 변경. pg NUMERIC 응답이 string이라 `Number()` 캐스팅 추가.
+  - **스코어링 3개 async**: `calculateValuationScore`/`calculateTechnicalScore`/`calculateSupplyDemandScore`에 `async` + `await pool.query()` 적용. pg가 `NUMERIC`/`BIGINT`를 string으로 반환하므로 `per`/`pbr`/`volume`/`institution`/`foreign_net` 모두 `Number()` 캐스팅. `calculateTrendScore`와 `calculateHoldingOpinion`은 DB 미접근이라 동기 유지 (불필요한 async 오염 방지).
+  - **`generateAlerts` async + KST SQL**: 모듈 스코프 `hasDuplicate`/`dailyLimitReached`/`insertAlert` 모두 async. 빈도 가드 SQL이 `DATE(created_at, 'localtime') = DATE('now', 'localtime')` → `(created_at AT TIME ZONE 'Asia/Seoul')::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`. 이 교체를 놓치면 KST 자정 전후 오작동.
+  - **남은 Step 9~14**: `getStockData()` async + `withTransaction` 교체 (PG-3), 라우터 28개 전수 교체, BATCH_SIZE 5→3, Puppeteer 제거, 데이터 마이그레이션, dataFreshness 주석 업데이트. **현재 서버 기동 불가 — 다음 세션에서 완료해야 함**.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건
@@ -126,7 +136,7 @@
 | ~~지표 가용성 플래그 부재~~ | ~~신규 종목·서버 초기에 RSI/MACD 부정확~~ | ✅ 11차에서 `*_available` 플래그 추가 |
 | ~~computeSMA 도메인 의존성~~ | ~~portfolio → analysis 단방향 위배~~ | ✅ 11차에서 `helpers/sma.js`로 재이동 |
 | device_id 보안 | CORS+Rate limit 적용 | **Phase 5**로 이동 (구독 도입 시점). HMAC + B안 강제 재등록 + 사용자 안내 화면 |
-| **SQLite 블로킹** | **PostgreSQL 전환 착수 (P2-1, 11~13일)** | Neon 무료 플랜 + connection.js 교체 + 스코어링 6개 async + getStockData async + 알림 빈도 가드 KST SQL + 라우터 28개 교체 |
+| **SQLite 블로킹** | **PostgreSQL 전환 Step 1~8 완료 (14차)**, Step 9~14 진행 중 | ✅ pg.Pool + schema/migrate/queryBuilder + 스코어링 3개 async + generateAlerts async + KST SQL · ⏳ getStockData async + 라우터 28개 교체 + 데이터 마이그레이션 |
 | Puppeteer 의존 (toss.js) | Render에 Chromium 필요 | P2-3: stock_history OHLCV 기반 자체 차트 렌더링으로 대체 → toss.js 제거, chart_path 컬럼 삭제 |
 | 스크래핑 의존 (네이버) | 핵심 데이터 네이버 스크래핑 | 장기: KIS/KRX 분리 평가 (시나리오 B 우선) |
 | 알림 이중 발송 | 배치 알림만 존재 | P3-6: Push+배치 단일 파이프라인. 일 N건 빈도 가드는 이미 11차에서 적용 완료 |
