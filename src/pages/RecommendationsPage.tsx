@@ -81,12 +81,21 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
             <p className="text-2xl font-black text-emerald-400">{categories.length}</p>
             <p className="text-xs text-slate-500 mt-1">업종 분야</p>
           </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-yellow-400">
-              {Math.round(recommendations.reduce((a, r) => a + r.score, 0) / recommendations.length)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">평균 추천 점수</p>
-          </div>
+          {/* algorithm 추천은 score=50 placeholder라 평균을 왜곡 → manual 추천만 평균 (15차 5-2) */}
+          {(() => {
+            const manual = recommendations.filter(r => r.source === 'manual');
+            const avg = manual.length > 0
+              ? Math.round(manual.reduce((a, r) => a + r.score, 0) / manual.length)
+              : null;
+            return (
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 text-center">
+                <p className="text-2xl font-black text-yellow-400">
+                  {avg !== null ? avg : '—'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">전문가 선정 평균 점수</p>
+              </div>
+            );
+          })()}
         </div>
       )}
 

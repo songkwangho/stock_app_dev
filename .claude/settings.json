@@ -45,7 +45,8 @@
       "Bash(node --check server/db/schema.js)",
       "Bash(node --check server/domains/alert/service.js)",
       "Bash(node --check server/domains/stock/data.js)",
-      "Bash(node --check server/scheduler.js)"
+      "Bash(node --check server/scheduler.js)",
+      "Bash(node --check server/db/migrate.js)"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"

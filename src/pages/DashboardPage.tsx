@@ -3,7 +3,7 @@ import {
   Wallet, TrendingUp, LayoutDashboard, ArrowUpRight, RefreshCw, ArrowRight
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
 import StatCard from '../components/StatCard';
@@ -66,10 +66,12 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
 
   // 차트용 데이터 변환: "20240115" → "1/15" + 툴팁용 한국어 풀 날짜
   // 마지막 포인트는 "1/15 (오늘)"로 표시해 초보자가 어느 날이 오늘인지 바로 파악할 수 있게 한다 (14차 5-2).
+  // cost(투자원금) 라인을 함께 그려 수익/손실 구간을 시각적으로 구분 (15차 5-4).
   const rawChartData = portfolioHistory.map(d => ({
     date: parseInt(d.date.slice(4, 6)) + '/' + parseInt(d.date.slice(6, 8)),
     fullDate: `${parseInt(d.date.slice(4, 6))}월 ${parseInt(d.date.slice(6, 8))}일`,
     value: d.value,
+    cost: d.cost,
     profitRate: d.profitRate,
   }));
   const chartData = rawChartData.map((d, i) => ({
@@ -110,9 +112,9 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
         </div>
       )}
       {holdings.length > 0 && (() => {
-        const dates = holdings.map(h => (h as unknown as { last_updated?: string }).last_updated).filter(Boolean);
+        const dates = holdings.map(h => h.last_updated).filter((d): d is string => !!d);
         if (!dates.length) return null;
-        const latest = Math.max(...dates.map(d => new Date(d as string).getTime()));
+        const latest = Math.max(...dates.map(d => new Date(d).getTime()));
         return <p className="text-xs text-slate-600">마지막 업데이트: {getDataFreshnessShort(new Date(latest).toISOString())}</p>;
       })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -207,9 +209,15 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
-                      formatter={(value: number | undefined) => [`₩${(value ?? 0).toLocaleString()}`, '평가금액']}
+                      formatter={(value, name) => [`₩${Number(value ?? 0).toLocaleString()}`, name === 'value' ? '평가금액' : '투자원금']}
+                    />
+                    <Legend
+                      verticalAlign="top" height={28} iconType="line" iconSize={14}
+                      formatter={(v) => v === 'value' ? '평가금액 (현재 가치)' : '투자원금 (산 가격 합계)'}
                     />
                     <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                    {/* 투자원금 라인: 평가금액이 이 라인 위면 수익, 아래면 손실 (5-4) */}
+                    <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
                 );
@@ -252,7 +260,11 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                           <p className="text-xs text-slate-500 bg-slate-900 px-1.5 rounded">{stock.value}%</p>
                         </div>
                         <div className="flex items-center space-x-2 flex-wrap">
-                          <p className="text-xs text-slate-500">평단: ₩{stock.avgPrice?.toLocaleString()}</p>
+                          <p className="text-xs text-slate-500">
+                            평단: ₩{stock.avgPrice?.toLocaleString()}
+                            <span className="text-slate-700 mx-1">→</span>
+                            <span className="text-slate-300">현재: ₩{stock.currentPrice?.toLocaleString()}</span>
+                          </p>
                           {stock.quantity > 0 && <p className="text-xs text-slate-500">x {stock.quantity}주</p>}
                           <p className={`text-xs font-bold ${pnlRate >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                             {pnlRate >= 0 ? '+' : ''}{pnlRate.toFixed(1)}%
@@ -285,27 +297,45 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
 
         <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
           <h3 className="text-lg font-semibold mb-6">자산 배분 현황</h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={portfolioData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {portfolioData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-3">
-            {portfolioData.map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div>
-                  <span className="text-sm text-slate-400">{item.name}</span>
-                </div>
-                <span className="text-sm font-medium">{item.value}%</span>
+          {/* 단일 종목일 때 PieChart는 정보 가치가 없어 분산 권유 카드로 대체 (15차 5-5) */}
+          {holdings.length === 1 ? (
+            <div className="space-y-4">
+              <div className="bg-slate-950 border border-slate-800/50 rounded-2xl p-5 text-center">
+                <p className="text-3xl mb-2">📊</p>
+                <p className="text-sm font-bold text-slate-200 mb-1">{holdings[0].name}</p>
+                <p className="text-xs text-slate-500">비중 100%</p>
               </div>
-            ))}
-          </div>
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
+                <p className="text-xs text-amber-300/90 leading-relaxed">
+                  💡 종목을 2개 이상 추가하면 자산 배분 그래프를 볼 수 있어요. 한 종목에 집중하면 그 종목 하락 시 손실이 커져요.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={portfolioData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                      {portfolioData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {portfolioData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div>
+                      <span className="text-sm text-slate-400">{item.name}</span>
+                    </div>
+                    <span className="text-sm font-medium">{item.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

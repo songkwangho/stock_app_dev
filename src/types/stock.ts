@@ -29,6 +29,7 @@ export interface Holding {
   holding_opinion?: HoldingOpinion;
   market_opinion?: MarketOpinion;
   sma_available?: boolean;  // false면 holding_opinion 신뢰 불가 → '분석 중' 표시
+  last_updated?: string;    // 서버 last_updated (ISO 8601). DashboardPage 신선도 라벨에 사용
 }
 
 export interface UpdateHoldingPayload {

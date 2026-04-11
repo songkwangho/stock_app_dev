@@ -218,16 +218,7 @@ const App = () => {
           <NavButton active={activeTab === 'settings'} onClick={() => navigateTo('settings')} icon={<Settings size={20} />} label="설정" />
         </nav>
 
-        <div className="p-6 mt-auto">
-          <div className="bg-gradient-to-br from-blue-600/10 to-emerald-600/10 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center space-x-3 mb-3">
-              <Star size={16} className="text-yellow-400 fill-yellow-400" />
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Premium Plan</span>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">고급 알고리즘을 통한 모든 추천 종목을 확인하세요.</p>
-            <button className="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors">구독 관리</button>
-          </div>
-        </div>
+        {/* 사이드바 하단 카드 — Premium Plan 카드는 구독 기능이 실제로 없는 시점에 사용자 혼란을 유발하므로 Phase 5 도입 시점까지 제거 (15차 5-6) */}
       </aside>
 
       {/* Content */}
@@ -392,12 +383,13 @@ const App = () => {
                                   {typeInfo.label}
                                 </span>
                                 <span className="text-xs text-slate-500 font-bold">{alert.name}</span>
-                                {/* 출처 뱃지 (14차 5-1): 'holding' = 보유 중, 'watchlist' = 관심 종목 */}
-                                {alert.source === 'holding' && (
+                                {/* 출처 뱃지 (14차 5-1): 'holding' / 'watchlist'. 레거시(undefined)는 "알림"으로 폴백 (15차 5-3) */}
+                                {alert.source === 'holding' ? (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300">보유 중</span>
-                                )}
-                                {alert.source === 'watchlist' && (
+                                ) : alert.source === 'watchlist' ? (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">관심 종목</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-400">알림</span>
                                 )}
                               </div>
                               <button

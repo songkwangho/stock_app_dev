@@ -6,10 +6,11 @@
 export async function runMigrations(pool) {
     // 주요 컬럼 존재 검증 — 누락 시 경고만 출력 (DDL은 schema.js가 책임)
     const expectations = [
-        { table: 'stocks',        columns: ['category', 'eps_current', 'eps_previous'] },
-        { table: 'holding_stocks', columns: ['device_id', 'quantity'] },
-        { table: 'alerts',         columns: ['device_id'] },
-        { table: 'watchlist',      columns: ['device_id'] },
+        { table: 'stocks',             columns: ['category', 'eps_current', 'eps_previous'] },
+        { table: 'holding_stocks',     columns: ['device_id', 'quantity'] },
+        { table: 'alerts',             columns: ['device_id', 'source'] },
+        { table: 'watchlist',          columns: ['device_id'] },
+        { table: 'stock_analysis',     columns: ['opinion', 'toss_url'] },
         { table: 'recommended_stocks', columns: ['source', 'created_at'] },
     ];
 

@@ -24,16 +24,21 @@ router.get('/', async (req, res) => {
 
         const enriched = await Promise.all(holdings.map(async (h) => {
             const { sma5, sma20 } = await computeSMA(pool, h.code);
+            // pg NUMERIC → string이므로 calculateHoldingOpinion에 전달 전 Number() 캐스팅 필수.
+            // 캐스팅 누락 시 `(currentPrice - avgPrice) / avgPrice` 연산에서 문자열/숫자 혼합 발생.
+            const avgPriceNum = h.avg_price !== null ? Number(h.avg_price) : null;
+            const priceNum = h.price !== null ? Number(h.price) : null;
             return {
                 ...h,
-                avg_price: h.avg_price !== null ? Number(h.avg_price) : null,
+                avg_price: avgPriceNum,
                 weight: h.weight !== null ? Number(h.weight) : null,
                 quantity: Number(h.quantity || 0),
+                price: priceNum,
                 per: h.per !== null ? Number(h.per) : null,
                 pbr: h.pbr !== null ? Number(h.pbr) : null,
                 roe: h.roe !== null ? Number(h.roe) : null,
                 market_opinion: h.market_opinion || '중립적',
-                holding_opinion: calculateHoldingOpinion(h.avg_price, h.price, sma5, sma20),
+                holding_opinion: calculateHoldingOpinion(avgPriceNum, priceNum, sma5, sma20),
                 sma_available: sma5 !== null,
             };
         }));
@@ -118,6 +123,7 @@ router.post('/', async (req, res) => {
             updated.avg_price = updated.avg_price !== null ? Number(updated.avg_price) : null;
             updated.weight = updated.weight !== null ? Number(updated.weight) : null;
             updated.quantity = Number(updated.quantity || 0);
+            updated.price = updated.price !== null ? Number(updated.price) : null;
             updated.per = updated.per !== null ? Number(updated.per) : null;
             updated.pbr = updated.pbr !== null ? Number(updated.pbr) : null;
             updated.roe = updated.roe !== null ? Number(updated.roe) : null;
@@ -172,6 +178,7 @@ router.put('/:code', async (req, res) => {
             updated.avg_price = updated.avg_price !== null ? Number(updated.avg_price) : null;
             updated.weight = updated.weight !== null ? Number(updated.weight) : null;
             updated.quantity = Number(updated.quantity || 0);
+            updated.price = updated.price !== null ? Number(updated.price) : null;
             updated.per = updated.per !== null ? Number(updated.per) : null;
             updated.pbr = updated.pbr !== null ? Number(updated.pbr) : null;
             updated.roe = updated.roe !== null ? Number(updated.roe) : null;

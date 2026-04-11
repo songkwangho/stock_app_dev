@@ -57,6 +57,19 @@
     - App.tsx 알림 패널: 각 알림에 `source` 뱃지, `created_at`을 `getDataFreshnessShort()` 포맷(“3분 전” 등)으로, 첫 진입 안내 카드에 "SMA 관련 알림은 보유 종목에만 발송돼요" 한 줄 추가.
     - `ErrorBanner`: `autoRetryMs` prop 추가. 동일 error 메시지당 1회만 자동 재시도(무한 루프 방지). DashboardPage에서 `autoRetryMs={3000}`로 Neon sleep 해제 대응.
     - RecommendationsPage 빈 상태: "지금 데이터를 분석 중이에요. 하루 1회 오전 8시에 갱신돼요."로 명시.
+- **15차 (PG 후속 버그 수정 + UI/UX 6건)**:
+  - **버그-3 (런타임 영향)**: `portfolio/router.js` GET/POST/PUT의 `calculateHoldingOpinion(h.avg_price, ...)` 호출이 pg NUMERIC string("70000")을 그대로 받아 손익률 계산이 깨지던 문제. `avgPriceNum`/`priceNum`을 별도 변수로 미리 캐스팅 후 전달.
+  - **버그-5 (풀 경합)**: `stock/router.js` `/recommendations`가 최대 97종목을 `Promise.all`로 동시 호출 → 캐시 미스 시 각 `getStockData`의 `withTransaction`이 Neon 풀(max=5)을 소진. `RECOMMEND_BATCH_SIZE = 3`으로 직렬 배치 처리. `syncAllStocks`의 BATCH_SIZE=3 패턴과 일관성 유지.
+  - **버그-1 (검증 누락)**: `migrate.js`의 `expectations`에 `stock_analysis` 테이블과 `alerts.source` 컬럼 검증 추가. SQLite → PG 마이그레이션 후 스키마 일관성 검증의 완전성 보강.
+  - **버그-2 (타입 안전성)**: `Holding` 인터페이스에 `last_updated?: string` 추가. `DashboardPage`의 `(h as unknown as { last_updated?: string })` 강제 캐스팅 제거 → 정상적인 옵셔널 필드 접근으로 변경.
+  - **불일치-4**: `dataFreshness.ts` 주석을 "PostgreSQL TIMESTAMPTZ (현재 기본) + SQLite 레거시 (마이그레이션 이전)" 양립 설명으로 갱신.
+  - **5-1 (DashboardPage 보유종목 카드 현재가)**: 평단 옆에 "→ 현재: ₩{currentPrice}" 표시. 초보자가 가장 궁금해하는 "지금 가격"을 한눈에 비교 가능.
+  - **5-2 (RecommendationsPage 평균 점수 왜곡)**: algorithm 추천은 `score=50` placeholder라 mixed 평균이 의미 없음. `source==='manual'`만 평균 + 라벨 "전문가 선정 평균 점수". manual이 0개면 `—` 표시.
+  - **5-3 (App.tsx 알림 출처 폴백)**: `alert.source`가 `undefined`인 레거시 알림(15차 schema 변경 이전)에 slate `[알림]` 폴백 뱃지 추가. 뱃지 누락으로 인한 출처 혼란 해소.
+  - **5-4 (DashboardPage 차트 손익 시각화)**: 평가금액 AreaChart 위에 `cost`(투자원금) 회색(`#94a3b8`) 파선 Line 오버레이 + Legend "평가금액 (현재 가치)"/"투자원금 (산 가격 합계)". value 라인이 cost 위면 수익, 아래면 손실 → "금액이 올랐는데 손해인가?" 혼동 해소. cost 필드는 이미 holdings/history API가 제공.
+  - **5-5 (DashboardPage PieChart 단일 종목)**: `holdings.length === 1`이면 PieChart(원 1개로 무의미) 대신 단일 종목 카드 + amber "💡 종목을 2개 이상 추가하면 자산 배분 그래프를 볼 수 있어요. 한 종목에 집중하면 그 종목 하락 시 손실이 커져요." 분산 권유 박스.
+  - **5-6 (사이드바 Premium Plan 카드 제거)**: 실제 구독 기능이 없는 시점에 "Premium Plan" 카드 + "구독 관리" 비활성 버튼이 사용자 혼란 유발 → Phase 5 도입 시점까지 사이드바에서 완전히 제거. CLAUDE.md Phase 5에 "사이드바 카드 복원" TODO 명시.
+  - **로드맵 보완**: P3-1 배포 직전 체크리스트(7개 환경변수/빌드/마이그레이션), P3-2 CORS `ALLOWED_ORIGINS` 환경변수화, P3-3 Neon sleep 해제 backoff 재시도, P5-1 `device_id → user_id` B안(병합) 확정 + `users` 테이블 스키마 + `legacy_device_id` 컬럼, P5-2 JWT 저장소 localStorage + 1h 만료 결정.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건

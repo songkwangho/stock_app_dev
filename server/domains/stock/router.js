@@ -162,36 +162,44 @@ router.get('/recommendations', async (req, res) => {
         }
         const nonHoldings = combined.filter(c => !holdingCodes.includes(c.code));
 
-        const results = await Promise.all(nonHoldings.map(async (rec) => {
-            const stockData = await getStockData(rec.code, rec.name);
-            if (!stockData) return null;
+        // 배치 처리 (Neon 풀 max=5 + getStockData 내부 withTransaction connection 점유 고려).
+        // Promise.all로 97종목 동시 호출 시 캐시 미스 구간에서 풀 경합 발생 → BATCH=3으로 직렬화.
+        const RECOMMEND_BATCH_SIZE = 3;
+        const results = [];
+        for (let i = 0; i < nonHoldings.length; i += RECOMMEND_BATCH_SIZE) {
+            const chunk = nonHoldings.slice(i, i + RECOMMEND_BATCH_SIZE);
+            const chunkResults = await Promise.all(chunk.map(async (rec) => {
+                const stockData = await getStockData(rec.code, rec.name);
+                if (!stockData) return null;
 
-            const currentPrice = stockData.price;
-            // Prioritize: 1. Manual fair_price, 2. Analyst target_price, 3. Calculated 1.1x
-            const fairPrice = rec.fair_price || stockData.targetPrice || Math.round(currentPrice * 1.1);
+                const currentPrice = stockData.price;
+                // Prioritize: 1. Manual fair_price, 2. Analyst target_price, 3. Calculated 1.1x
+                const fairPrice = rec.fair_price || stockData.targetPrice || Math.round(currentPrice * 1.1);
 
-            if (currentPrice >= fairPrice) return null;
+                if (currentPrice >= fairPrice) return null;
 
-            return {
-                code: rec.code,
-                name: rec.name,
-                category: rec.category,
-                reason: rec.reason,
-                score: rec.score,
-                fairPrice: fairPrice,
-                currentPrice: currentPrice,
-                per: stockData.per,
-                pbr: stockData.pbr,
-                roe: stockData.roe,
-                targetPrice: stockData.targetPrice,
-                probability: Math.min(100, Math.round((fairPrice / currentPrice) * 50 + (rec.score / 2))),
-                analysis: stockData.analysis,
-                advice: stockData.advice,
-                market_opinion: stockData.market_opinion,
-                source: rec.source || 'manual',
-                tossUrl: stockData.tossUrl,
-            };
-        }));
+                return {
+                    code: rec.code,
+                    name: rec.name,
+                    category: rec.category,
+                    reason: rec.reason,
+                    score: rec.score,
+                    fairPrice: fairPrice,
+                    currentPrice: currentPrice,
+                    per: stockData.per,
+                    pbr: stockData.pbr,
+                    roe: stockData.roe,
+                    targetPrice: stockData.targetPrice,
+                    probability: Math.min(100, Math.round((fairPrice / currentPrice) * 50 + (rec.score / 2))),
+                    analysis: stockData.analysis,
+                    advice: stockData.advice,
+                    market_opinion: stockData.market_opinion,
+                    source: rec.source || 'manual',
+                    tossUrl: stockData.tossUrl,
+                };
+            }));
+            results.push(...chunkResults);
+        }
 
         const filteredResults = results.filter(r => r !== null && r.market_opinion === '긍정적').sort((a, b) => b.score - a.score);
         res.json(filteredResults);
