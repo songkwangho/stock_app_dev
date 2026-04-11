@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, Pencil, Trash2, Check, X, ChevronUp, PlusCircle, Eye, HelpCircle } from 'lucide-react';
 import StockSearchInput from '../components/StockSearchInput';
 import WatchlistContent from '../components/WatchlistContent';
+import ErrorBanner from '../components/ErrorBanner';
 import { useNavigationStore } from '../stores/useNavigationStore';
+import { usePortfolioStore } from '../stores/usePortfolioStore';
 import type { Holding, StockSummary } from '../types/stock';
 
 interface HoldingsAnalysisPageProps {
@@ -31,6 +33,10 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
   const [firstStockGuide, setFirstStockGuide] = useState<{ code: string; name: string } | null>(null);
   // 수익률 계산식 [?] 툴팁 (종목별 1개)
   const [profitHelpCode, setProfitHelpCode] = useState<string | null>(null);
+
+  // 포트폴리오 도메인 에러 (usePortfolioStore.error)는 ErrorBanner로 통일 표시
+  const portfolioError = usePortfolioStore(state => state.error);
+  const refetchHoldings = usePortfolioStore(state => state.fetchHoldings);
 
   // 페이지 진입 시 pendingFocus 처리:
   //  - 'add-holding-search': 온보딩 → 검색 폼 자동 노출
@@ -165,6 +171,9 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
         </button>
       </div>
 
+      {/* 포트폴리오 도메인 에러 (DB 연결 실패 등) — 통일된 ErrorBanner */}
+      <ErrorBanner error={portfolioError} kind="server" onRetry={refetchHoldings} />
+
       {subTab === 'watchlist' && (
         <WatchlistContent onDetailClick={onDetailClick} />
       )}
@@ -221,24 +230,30 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
+                    <label className="text-xs text-slate-300 mb-1 block font-bold">내가 산 평균 가격 (원)</label>
                     <input
                       type="number"
-                      placeholder="매수가"
+                      placeholder="예: 70000"
                       value={newForm.avgPrice}
                       onChange={(e) => setNewForm({ ...newForm, avgPrice: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      여러 번 나눠 샀다면 평균을 입력해요. 예: 10만원에 5주, 11만원에 5주 → 105,000원
+                    </p>
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">수량 (주)</label>
+                    <label className="text-xs text-slate-300 mb-1 block font-bold">보유 주식 수 (주)</label>
                     <input
                       type="number"
-                      placeholder="수량"
+                      placeholder="예: 10"
                       value={newForm.quantity}
                       onChange={(e) => setNewForm({ ...newForm, quantity: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      증권사 앱 → 보유 종목에서 확인할 수 있어요.
+                    </p>
                   </div>
                 </div>
                 <div className="pt-2">
@@ -442,22 +457,24 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                   <p className="text-xs text-blue-400 font-bold uppercase tracking-widest">보유 정보 수정</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-slate-500 mb-1 block">매수가 (1주당 산 가격)</label>
+                      <label className="text-xs text-slate-300 mb-1 block font-bold">내가 산 평균 가격 (원)</label>
                       <input
                         type="number"
                         value={editState.avgPrice}
                         onChange={(e) => setEditState({ ...editState, avgPrice: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
+                      <p className="text-[11px] text-slate-500 mt-1">여러 번 나눠 샀다면 평균을 입력해요.</p>
                     </div>
                     <div>
-                      <label className="text-xs text-slate-500 mb-1 block">수량 (주)</label>
+                      <label className="text-xs text-slate-300 mb-1 block font-bold">보유 주식 수 (주)</label>
                       <input
                         type="number"
                         value={editState.quantity}
                         onChange={(e) => setEditState({ ...editState, quantity: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                       />
+                      <p className="text-[11px] text-slate-500 mt-1">증권사 앱에서 확인할 수 있어요.</p>
                     </div>
                   </div>
                   <div className="flex justify-end space-x-2 pt-1">
@@ -477,7 +494,7 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
               ) : (
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">
-                    <p className="text-xs text-slate-500 mb-1">매수가 (1주당 산 가격)</p>
+                    <p className="text-xs text-slate-500 mb-1">평균 매수가 (1주당)</p>
                     <p className="text-sm font-bold">₩{stock.avgPrice?.toLocaleString()}</p>
                   </div>
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/50">

@@ -69,7 +69,10 @@
 ### 갱신 시각 (`src/utils/dataFreshness.ts`)
 - `getDataFreshnessLabel(lastUpdated: string)`: "N분 전 (HH:MM, 장중 데이터/전일 종가)" — 종목 상세
 - `getDataFreshnessShort(lastUpdated: string)`: "N분 전" — 대시보드
-- **파싱**: SQLite `CURRENT_TIMESTAMP` (UTC `"YYYY-MM-DD HH:MM:SS"`)를 `parseServerDate()` 헬퍼로 명시 UTC 해석. `new Date()` 직접 호출 금지 (로컬 시간대로 해석해 KST와 9시간 오차 발생).
+- **입력 형식**: 서버 DB timestamp. 두 형식 모두 처리:
+  - SQLite (현재): `CURRENT_TIMESTAMP` → `"YYYY-MM-DD HH:MM:SS"` (UTC, T/Z 없음)
+  - PostgreSQL (Phase 2-1 전환 후): `TIMESTAMPTZ` → ISO 8601 (`"2024-01-15T08:00:00.000Z"`)
+- **파싱 로직**: `parseServerDate()` 헬퍼가 정규식으로 `Z` / `+HH:MM` 접미사를 검사 — 있으면 `new Date(input)` 그대로, 없으면 (SQLite 형식) `T`와 `Z`를 추가해 명시 UTC로 해석. `new Date()` 직접 호출 금지 (SQLite 형식을 로컬 시간대로 해석해 KST와 9시간 오차 발생).
 - **KST 변환**: `Asia/Seoul` 타임존 명시. 클라이언트 시간대와 무관.
 - **장중 판단**: KST 평일 9~16시 자동 판단.
 - **알려진 제약**: 광복절 등 공휴일에 "장중 데이터" 오표시 가능. 향후 공휴일 캘린더 통합 시 해소.
@@ -230,6 +233,28 @@ HoldingsAnalysisPage 종목 카드의 "수익률" 헤더 옆 `HelpCircle` 아이
 - 하위 25%: "주의 필요"
 
 PER/PBR은 낮을수록 좋음, ROE는 높을수록 좋음으로 방향 보정. 단순 평균 비교(`+N%`)보다 직관적.
+
+### 공통 에러 표시 (`ErrorBanner`)
+페이지/위젯의 에러 상태는 `ErrorBanner` 컴포넌트로 통일 표시한다.
+- Props: `error: string | null` (null이면 미렌더), `kind?: 'network' | 'server' | 'unknown'`, `onRetry?`
+- `kind`별 헤드라인:
+  - `network`: "네트워크 연결을 확인해 주세요"
+  - `server`: "서버에서 데이터를 불러오지 못했어요"
+  - `unknown`: "데이터를 불러오지 못했어요"
+- `onRetry`가 있으면 우측에 "다시 시도" 버튼 (44x44px 터치 타겟 충족)
+- **사용처**: HoldingsAnalysisPage(`portfolioStore.error`), DashboardPage(`historyError`), MajorStocksPage(`error`)
+
+PostgreSQL 전환 후 DB 연결 실패 케이스가 늘어날 수 있으므로, 신규 데이터 페치 추가 시 try/catch에 ErrorBanner를 즉시 연결하는 것을 기본으로 한다.
+
+### 서버 연결 스플래시 (App.tsx)
+앱 진입 시 `/api/health` 응답을 기다린 후에만 본 UI 진입. 이전에는 서버가 5초 후 syncAllStocks를 실행하는 동안 빈 화면이 보였음. Render 콜드 스타트(첫 요청 30~60초 지연) 시에도 사용자에게 명확한 안내 제공.
+
+상태:
+- `'checking'` (초기): "데이터를 불러오는 중이에요..." + 스피너
+- `'ok'`: 정상 본 UI 진입. holdings/marketIndices fetching 시작
+- `'timeout'` (10초 AbortController): "서버가 잠시 바빠요. 조금 후 다시 시도해 주세요." + [다시 시도] 버튼
+
+`VITE_API_BASE_URL` 환경변수로 API base URL을 변경 가능 (배포 시).
 
 ### 지표 가용성 안내 (StockDetailView)
 RSI/MACD/볼린저밴드의 `*_available === false` 시 종합 지표 패널 하단에 슬레이트 안내 박스:

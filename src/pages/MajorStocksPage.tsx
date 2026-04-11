@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2, X } from 'lucide-react';
 import { stockApi } from '../api/stockApi';
+import ErrorBanner from '../components/ErrorBanner';
 import type { Stock, StockSummary } from '../types/stock';
 
 interface MajorStocksPageProps {
@@ -21,13 +22,20 @@ const CATEGORY_ORDER = [
 const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // 종목 삭제 확인 모달 — 보유·관심·알림 cascade 삭제 위험을 사용자에게 명시
+  const [pendingDelete, setPendingDelete] = useState<Stock | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchStocks = async () => {
+    setError(null);
+    setLoading(true);
     try {
       const data = await stockApi.getAllStocks();
       setStocks(data);
-    } catch (error) {
-      console.error('Failed to fetch stocks:', error);
+    } catch (err) {
+      console.error('Failed to fetch stocks:', err);
+      setError('종목 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       setLoading(false);
     }
@@ -37,15 +45,23 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
     fetchStocks();
   }, []);
 
-  const handleDelete = async (e: React.MouseEvent, code: string) => {
+  const requestDelete = (e: React.MouseEvent, stock: Stock) => {
     e.stopPropagation();
-    if (!window.confirm('이 종목을 목록에서 삭제하시겠습니까?')) return;
+    setPendingDelete(stock);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await stockApi.deleteStock(code);
+      await stockApi.deleteStock(pendingDelete.code);
+      setPendingDelete(null);
       fetchStocks();
-    } catch (error) {
-      console.error('Delete failed:', error);
-      alert('삭제에 실패했습니다.');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setError('종목 삭제에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -64,6 +80,42 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
         <h2 className="text-2xl font-bold mb-2">주요 종목 현황</h2>
         <p className="text-slate-500 text-sm">업종별 주요 종목의 실시간 시세와 추세를 한눈에 확인하세요.</p>
       </div>
+
+      <ErrorBanner error={error} kind="server" onRetry={fetchStocks} />
+
+      {/* 종목 삭제 확인 모달 — cascade로 보유·관심·알림 데이터까지 함께 사라짐을 명시 */}
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4">
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-bold text-white">{pendingDelete.name}을(를) 삭제할까요?</h3>
+              <button onClick={() => setPendingDelete(null)} className="text-slate-500 hover:text-white p-2 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="닫기">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              이 종목에 연결된 <span className="text-red-300 font-bold">보유 내역, 관심 종목, 알림</span>이 모두 사라져요.
+              이 작업은 되돌릴 수 없어요.
+            </p>
+            <div className="flex space-x-3 pt-2">
+              <button
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded-xl transition-colors disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50"
+              >
+                {deleting ? '삭제 중...' : '삭제할게요'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-12">
         {CATEGORY_ORDER.map(category => {
@@ -85,9 +137,10 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
                     className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 hover:bg-slate-900 hover:border-blue-500/30 transition-all cursor-pointer group relative"
                   >
                     <button
-                      onClick={(e) => handleDelete(e, stock.code)}
-                      className="absolute top-2 right-2 p-1.5 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all z-10"
+                      onClick={(e) => requestDelete(e, stock)}
+                      className="absolute top-2 right-2 p-2 min-w-[32px] min-h-[32px] text-slate-500 hover:text-red-500 transition-all z-10"
                       title="종목 삭제"
+                      aria-label={`${stock.name} 삭제`}
                     >
                       <Trash2 size={14} />
                     </button>

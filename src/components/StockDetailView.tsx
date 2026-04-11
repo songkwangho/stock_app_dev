@@ -903,24 +903,27 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   <div className="space-y-4">
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">매수가 (₩)</label>
-                        <input type="number" title="매수가" value={addForm.avgPrice}
+                        <label className="text-xs text-slate-300 mb-1 block font-bold">평균 매수가 (₩)</label>
+                        <input type="number" title="여러 번 나눠 샀다면 평균을 입력해요" value={addForm.avgPrice}
                           onChange={(e) => setAddForm({ ...addForm, avgPrice: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                       <div>
-                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">수량 (주)</label>
-                        <input type="number" title="수량" value={addForm.quantity}
+                        <label className="text-xs text-slate-300 mb-1 block font-bold">보유 수량 (주)</label>
+                        <input type="number" title="증권사 앱에서 확인할 수 있어요" value={addForm.quantity}
                           onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                       <div>
-                        <label className="text-xs text-slate-500 mb-1 uppercase tracking-widest block font-bold">비중 (%)</label>
-                        <input type="number" title="비중" value={addForm.weight}
+                        <label className="text-xs text-slate-300 mb-1 block font-bold">비중 (%)</label>
+                        <input type="number" title="포트폴리오 내 목표 비중" value={addForm.weight}
                           onChange={(e) => setAddForm({ ...addForm, weight: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                     </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      평균 매수가: 여러 번 나눠 샀다면 평균을 입력해요. 수량은 증권사 앱에서 확인 가능.
+                    </p>
                     {addForm.quantity !== '0' && addForm.avgPrice !== '0' && (
                       <p className="text-xs text-slate-500">
                         총 투자금액: ₩{(parseInt(addForm.quantity || '0') * parseInt(addForm.avgPrice || '0')).toLocaleString()}

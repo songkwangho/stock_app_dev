@@ -7,6 +7,7 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import StatCard from '../components/StatCard';
+import ErrorBanner from '../components/ErrorBanner';
 import { stockApi } from '../api/stockApi';
 import { getDataFreshnessShort } from '../utils/dataFreshness';
 import type { Holding, StockSummary } from '../types/stock';
@@ -30,23 +31,29 @@ const COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#8b5cf6'
 const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = [] }: DashboardPageProps) => {
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const fetchHistory = async () => {
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const data = await stockApi.getHoldingsHistory();
+      setPortfolioHistory(data);
+    } catch (error) {
+      console.error('Failed to fetch portfolio history:', error);
+      setHistoryError('포트폴리오 추이를 불러오지 못했어요. 네트워크 또는 서버 상태를 확인해 주세요.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const data = await stockApi.getHoldingsHistory();
-        setPortfolioHistory(data);
-      } catch (error) {
-        console.error('Failed to fetch portfolio history:', error);
-      } finally {
-        setHistoryLoading(false);
-      }
-    };
     if (holdings.length > 0) {
       fetchHistory();
     } else {
       setHistoryLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdings.length]);
 
   const portfolioData = holdings.length > 0
@@ -57,8 +64,10 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
     }))
     : [{ name: '보유 종목 없음', value: 100, color: '#1e293b' }];
 
+  // 차트용 데이터 변환: "20240115" → "1/15" + 툴팁용 한국어 풀 날짜
   const chartData = portfolioHistory.map(d => ({
-    date: d.date.slice(4, 6) + '/' + d.date.slice(6, 8),
+    date: parseInt(d.date.slice(4, 6)) + '/' + parseInt(d.date.slice(6, 8)),
+    fullDate: `${parseInt(d.date.slice(4, 6))}월 ${parseInt(d.date.slice(6, 8))}일`,
     value: d.value,
     profitRate: d.profitRate,
   }));
@@ -140,6 +149,8 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
         />
       </div>
 
+      <ErrorBanner error={historyError} kind="server" onRetry={fetchHistory} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
@@ -147,19 +158,29 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
               <h3 className="text-lg font-semibold">포트폴리오 수익률 추이</h3>
               <span className="text-xs text-slate-500">최근 {portfolioHistory.length}거래일 기준</span>
             </div>
+            {/* 첫 / 마지막 데이터 포인트의 절대 날짜 표시 — 초보자가 차트 X축 범위를 즉시 파악할 수 있도록 */}
+            {chartData.length > 1 && (
+              <p className="text-xs text-slate-600 mb-3">
+                {chartData[0].fullDate} ~ {chartData[chartData.length - 1].fullDate}
+              </p>
+            )}
             <div className="h-80 w-full">
               {historyLoading ? (
                 <div className="flex items-center justify-center h-full text-slate-500">
                   <RefreshCw className="animate-spin mr-2" size={20} />
                   <span>데이터 로딩 중...</span>
                 </div>
-              ) : chartData.length > 0 ? (
+              ) : chartData.length > 0 ? (() => {
+                // 오늘 수익이 마이너스이면 차트 색상을 빨간색으로 변경 (avgProfitRate 기준)
+                const isLoss = avgProfitRate < 0;
+                const lineColor = isLoss ? '#ef4444' : '#3b82f6';
+                return (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        <stop offset="5%" stopColor={lineColor} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -167,12 +188,14 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                     <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
-                      formatter={(value: number | undefined) => [`₩${(value ?? 0).toLocaleString()}`, '포트폴리오 가치']}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                      formatter={(value: number | undefined) => [`₩${(value ?? 0).toLocaleString()}`, '평가금액']}
                     />
-                    <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                    <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : (
+                );
+              })() : (
                 <div className="flex items-center justify-center h-full text-slate-600">
                   <p className="text-sm">보유 종목을 추가하면 수익률 추이가 표시됩니다.</p>
                 </div>

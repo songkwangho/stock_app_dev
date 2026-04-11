@@ -18,16 +18,20 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
       onClick={() => onDetailClick(stock)}
       className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 hover:bg-slate-900/80 hover:border-blue-500/30 transition-all group cursor-pointer flex flex-col"
     >
-      {/* Header: Name + Score */}
+      {/* Header: Name + Score
+          algorithm 추천은 score 필드가 placeholder(50)라 의미가 없어 숨김.
+          manual 추천만 편집자가 부여한 점수 그대로 표시. */}
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
           <h4 className="font-bold text-base truncate group-hover:text-blue-400 transition-colors">{stock.name}</h4>
           <p className="text-xs text-slate-500 font-mono mt-0.5">{stock.code}</p>
         </div>
-        <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ml-3">
-          <Zap size={11} />
-          <span>{stock.score}</span>
-        </div>
+        {stock.source === 'manual' && stock.score > 0 && (
+          <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ml-3" title="전문가 선정 점수">
+            <Zap size={11} />
+            <span>{stock.score}</span>
+          </div>
+        )}
       </div>
 
       {/* Reason */}

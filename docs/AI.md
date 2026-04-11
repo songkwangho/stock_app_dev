@@ -29,6 +29,16 @@
   - **cleanupOldData ↔ algorithm 추천 정합성 명세**: stock_analysis는 source 구분 없이 20일+ 삭제되므로 algorithm 추천은 매일 syncAllStocks로만 갱신됨. 의도된 동작임을 BACKEND.md에 명시.
   - **scoring.js 주석 강화**: "computeSMA는 helpers/sma.js에 있음 — 중복 정의 금지" 주석으로 LLM이 작업 시 이전 버전을 재참조해 중복 정의하는 위험 방지.
   - **portfolio/router.js import 경로 BACKEND.md 명시**: `import { computeSMA } from '../../helpers/sma.js'` 경로를 디렉토리 트리에 포함.
+- **13차 PostgreSQL 전환 준비 + 배포 직전 UX 보완**:
+  - **BACKEND.md "PostgreSQL 전환 가이드" 신설**: 영향 범위(better-sqlite3 178+ 호출, 동기 스코어링 6개, getStockData async 재작성, PRAGMA→information_schema, sma.js 시그니처 변경) + 단계별 11~13일 작업 + connection 사용 패턴 변경 예시.
+  - **알림 빈도 가드 SQL을 SQLite/PostgreSQL 두 버전 표로 명시**: PG 전환 시 `'localtime'` → `AT TIME ZONE 'Asia/Seoul'::date` 교체를 놓치면 KST 자정 전후 오작동.
+  - **dataFreshness 입력 형식 양립**: SQLite `"YYYY-MM-DD HH:MM:SS"`와 PostgreSQL ISO 8601 `"...Z"` 양쪽 처리 명세. `parseServerDate` 정규식 방식으로 자동 분기되어 코드 변경 불필요.
+  - **공통 ErrorBanner 컴포넌트 신설**: 9번째 컴포넌트. PG 전환 후 DB 연결 실패 케이스가 늘어날 것을 대비해 페이지별 흩어진 에러 처리를 통일. DashboardPage / HoldingsAnalysisPage / MajorStocksPage 3곳에 우선 적용.
+  - **서버 health 게이트 (App.tsx)**: 진입 시 `/api/health` 응답 전까지 본 UI 차단. checking / ok / timeout 3-state. 10초 AbortController. Render 콜드 스타트 + DB 다운 + 네트워크 단절 케이스 안전망. `VITE_API_BASE_URL` 환경변수 지원.
+  - **추천 카드 placeholder 점수 숨김**: algorithm 추천의 score=50은 의미 없는 placeholder라 표시 자체를 제거. manual 추천만 편집자가 부여한 점수 표시.
+  - **MajorStocksPage 삭제 확인 모달**: window.confirm 대신 모달. cascade 삭제 위험(보유·관심·알림) 명시.
+  - **DashboardPage 차트 동적 색상**: 손실 상태(`avgProfitRate < 0`)면 라인·그라디언트가 빨간색으로 전환. 차트 위에 풀 날짜 범위 표시 ("1월 15일 ~ 2월 4일"). 툴팁도 풀 날짜로 표시.
+  - **평단가 폼 초보자 레이블**: "매수가 (1주당 산 가격)" → "내가 산 평균 가격 (원)" + 평균 계산 예시 힌트 + 수량 출처 안내. HoldingsAnalysisPage·StockDetailView 양쪽 동기화.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건
@@ -116,8 +126,9 @@
 | ~~지표 가용성 플래그 부재~~ | ~~신규 종목·서버 초기에 RSI/MACD 부정확~~ | ✅ 11차에서 `*_available` 플래그 추가 |
 | ~~computeSMA 도메인 의존성~~ | ~~portfolio → analysis 단방향 위배~~ | ✅ 11차에서 `helpers/sma.js`로 재이동 |
 | device_id 보안 | CORS+Rate limit 적용 | **Phase 5**로 이동 (구독 도입 시점). HMAC + B안 강제 재등록 + 사용자 안내 화면 |
-| SQLite 블로킹 | 5초 지연 실행으로 완화 | P2-1: better-sqlite3 사용 패턴 전수 조사. P5 이후 PostgreSQL 전환 |
-| 스크래핑 의존 | 핵심 데이터 네이버 스크래핑 | P2-3: KIS/KRX 분리 평가 (시나리오 B 우선) |
+| **SQLite 블로킹** | **PostgreSQL 전환 착수 (P2-1, 11~13일)** | Neon 무료 플랜 + connection.js 교체 + 스코어링 6개 async + getStockData async + 알림 빈도 가드 KST SQL + 라우터 28개 교체 |
+| Puppeteer 의존 (toss.js) | Render에 Chromium 필요 | P2-3: stock_history OHLCV 기반 자체 차트 렌더링으로 대체 → toss.js 제거, chart_path 컬럼 삭제 |
+| 스크래핑 의존 (네이버) | 핵심 데이터 네이버 스크래핑 | 장기: KIS/KRX 분리 평가 (시나리오 B 우선) |
 | 알림 이중 발송 | 배치 알림만 존재 | P3-6: Push+배치 단일 파이프라인. 일 N건 빈도 가드는 이미 11차에서 적용 완료 |
 | 스코어 임계값 검증 | 임시값(7/4점), 주석 추가됨 | P2-2: 적재 스크립트 즉시 작성 → P4: 백테스팅 |
 | 공휴일 장중/장외 판단 | 평일 9~16시만 판단 | 공휴일 캘린더 통합 (Phase 3 후속) |
@@ -125,3 +136,5 @@
 | 번들 크기 측정 | 미측정 | P3-1: Recharts lazy import → 번들 측정 (rollup-plugin-visualizer). <250KB gzip 목표 |
 | ~~앱스토어 분류 전략~~ | ~~잠정~~ | ✅ "Utilities" 결정 (Finance 심사 리스크 회피) |
 | 섹터별 스코어링 가중치 | 바이오에 PER 밸류에이션 부적합 | P4: 섹터별 가중치 테이블 도입 |
+| 에러 처리 분산 | 페이지마다 다른 에러 UI | ✅ 13차에서 ErrorBanner 공통 컴포넌트 + 3개 페이지 적용 |
+| 빈 화면 노출 (콜드 스타트) | 서버 응답 전 빈 UI | ✅ 13차에서 `/api/health` 게이트 + 스플래시 화면 |

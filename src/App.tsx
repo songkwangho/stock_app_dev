@@ -50,13 +50,35 @@ const App = () => {
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
   // 알림 패널 첫 진입 1회 안내 (4번째 onboarding 키)
   const [alertsExplained, setAlertsExplained] = useState(() => !!localStorage.getItem('onboarding_alerts_explained'));
+  // 서버 health check (Render 콜드 스타트 / DB 연결 실패 가시화)
+  const [healthState, setHealthState] = useState<'checking' | 'ok' | 'timeout'>('checking');
+
+  // 앱 진입 시 /api/health 호출. 10초 타임아웃이면 사용자에게 안내 후 [다시 시도] 버튼 제공.
+  // 정상 응답 후에만 holdings/indices 로딩 시작.
+  const checkHealth = async () => {
+    setHealthState('checking');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'}/health`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) setHealthState('ok');
+      else setHealthState('timeout');
+    } catch {
+      clearTimeout(timer);
+      setHealthState('timeout');
+    }
+  };
+
+  useEffect(() => { checkHealth(); }, []);
 
   useEffect(() => {
-    fetchHoldings();
-  }, [fetchHoldings]);
+    if (healthState === 'ok') fetchHoldings();
+  }, [healthState, fetchHoldings]);
 
-  // Fetch unread count and market indices periodically
+  // Fetch unread count and market indices periodically (health 통과 후에만)
   useEffect(() => {
+    if (healthState !== 'ok') return;
     const fetchIndices = async () => {
       try {
         const data = await stockApi.getMarketIndices();
@@ -67,7 +89,7 @@ const App = () => {
     fetchIndices();
     const interval = setInterval(() => { fetchUnreadCount(); fetchIndices(); }, 60000);
     return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+  }, [fetchUnreadCount, healthState]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -113,6 +135,48 @@ const App = () => {
   const handleDeleteAlert = async (id: number) => {
     await deleteAlert(id);
   };
+
+  // 서버 연결 스플래시 — 정상 응답 전까지 다른 UI를 차단하여 빈 화면 노출 방지.
+  // Render Starter는 콜드 스타트가 거의 없지만 free plan / 첫 진입 / DB 다운 케이스에 대비.
+  if (healthState !== 'ok') {
+    return (
+      <div className="flex h-screen bg-slate-950 text-slate-50 items-center justify-center font-sans p-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="flex items-center justify-center">
+            <span className="bg-blue-600 p-3 rounded-2xl"><Zap size={28} fill="white" color="white" /></span>
+          </div>
+          <h1 className="text-2xl font-extrabold">StockAnalyzer</h1>
+          {healthState === 'checking' ? (
+            <>
+              <div className="flex items-center justify-center text-slate-400">
+                <RefreshCw className="animate-spin mr-2" size={18} />
+                <span className="text-sm">데이터를 불러오는 중이에요...</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                서버가 잠시 후 응답할 거예요.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                서버가 잠시 바빠요. 조금 후 다시 시도해 주세요.
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                네트워크 연결과 서버 상태를 확인해 주세요.
+              </p>
+              <button
+                onClick={checkHealth}
+                className="px-6 py-3 min-h-[44px] bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-2xl transition-colors inline-flex items-center space-x-2"
+              >
+                <RefreshCw size={14} />
+                <span>다시 시도</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-50 overflow-hidden font-sans">
