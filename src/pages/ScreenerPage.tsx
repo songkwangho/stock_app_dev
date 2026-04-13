@@ -229,7 +229,53 @@ const ScreenerPage = ({ onDetailClick }: ScreenerPageProps) => {
             <p className="text-sm text-slate-400">{results.length}개 종목을 찾았어요</p>
           </div>
 
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl overflow-hidden">
+          {/* 16차 5-4: 모바일(md 미만)은 카드 레이아웃, PC는 기존 테이블. 5컬럼 테이블이 모바일에서 가로 스크롤 강제하던 문제 해소 */}
+          <div className="md:hidden space-y-3">
+            {results.map(stock => (
+              <button
+                key={stock.code}
+                onClick={() => onDetailClick(stock)}
+                className="w-full text-left bg-slate-900/50 border border-slate-800 rounded-2xl p-4 hover:border-blue-500/30 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-bold text-white">{stock.name}</p>
+                    <p className="text-xs text-slate-500 font-mono">{stock.code} · {stock.category}</p>
+                  </div>
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${
+                    stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
+                    stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' :
+                    'bg-slate-500/10 text-slate-400'
+                  }`}>
+                    {stock.market_opinion || '중립적'}
+                  </span>
+                </div>
+                <p className="text-lg font-black mb-2">₩{stock.price?.toLocaleString()}</p>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <p className="text-slate-600">PER</p>
+                    <p className={stock.per && stock.per < 15 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+                      {stock.per ? `${stock.per}배` : '---'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-600">PBR</p>
+                    <p className={stock.pbr && stock.pbr <= 1 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+                      {stock.pbr ? `${stock.pbr}배` : '---'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-600">ROE</p>
+                    <p className={stock.roe && stock.roe >= 15 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+                      {stock.roe ? `${stock.roe}%` : '---'}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden md:block bg-slate-900/50 border border-slate-800 rounded-3xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>

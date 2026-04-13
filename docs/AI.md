@@ -70,6 +70,29 @@
   - **5-5 (DashboardPage PieChart 단일 종목)**: `holdings.length === 1`이면 PieChart(원 1개로 무의미) 대신 단일 종목 카드 + amber "💡 종목을 2개 이상 추가하면 자산 배분 그래프를 볼 수 있어요. 한 종목에 집중하면 그 종목 하락 시 손실이 커져요." 분산 권유 박스.
   - **5-6 (사이드바 Premium Plan 카드 제거)**: 실제 구독 기능이 없는 시점에 "Premium Plan" 카드 + "구독 관리" 비활성 버튼이 사용자 혼란 유발 → Phase 5 도입 시점까지 사이드바에서 완전히 제거. CLAUDE.md Phase 5에 "사이드바 카드 복원" TODO 명시.
   - **로드맵 보완**: P3-1 배포 직전 체크리스트(7개 환경변수/빌드/마이그레이션), P3-2 CORS `ALLOWED_ORIGINS` 환경변수화, P3-3 Neon sleep 해제 backoff 재시도, P5-1 `device_id → user_id` B안(병합) 확정 + `users` 테이블 스키마 + `legacy_device_id` 컬럼, P5-2 JWT 저장소 localStorage + 1h 만료 결정.
+- **16차 (배포 직전 차단 버그 해소 + UI/UX 7건)**:
+  - **서버 버그**:
+    - **버그-A** `portfolio/router.js` POST/PUT: pg NUMERIC `Number()` 캐스팅 이유 주석 보강 (GET 주석과 일관성 확보).
+    - **버그-B** `stock/router.js` `/recommendations`: `filter().sort()`가 algorithm 추천의 score=50 placeholder로 인해 정렬 순서가 의미 없음 → `manual` (score 78~95 기준 정렬) + `algorithm` tail 분리 조합. 실제 노출 순서는 동일하지만 정렬 의도가 코드에 명확히 표현됨.
+    - **버그-C** `DashboardPage`: `AreaChart` 안에 `Line`을 혼용하던 비공식 패턴 → **`ComposedChart`**로 교체. Recharts 버전 업그레이드 시 깨질 위험 제거.
+    - **버그-D** `scheduler.js` `initialSyncWithRetry()`: 첫 `syncAllStocks` 실패 시 30초 후 1회 backoff. Neon 무료 플랜 sleep 해제(1~3초) + `connectionTimeoutMillis` 5초 경계에서 첫 sync가 조용히 실패하고 다음 08:00까지 갱신 없음이던 문제 해소.
+    - **버그-E** `server.js` `ALLOWED_ORIGINS`: `process.env.FRONTEND_URL`을 콤마로 분해해 주입 — 배포 직후 Vercel 도메인 CORS 차단 해소. 다중 도메인(staging + prod) 지원.
+  - **설계-A** `schema.js` `holding_stocks.avg_price`: `INTEGER` → **`NUMERIC(14, 2)`**. 분할 매수 평균이 소수점 1~2자리까지 발생할 수 있어 INTEGER 반올림이 수익률 계산 오차를 유발하던 문제.
+  - **change_rate 실제 계산**: `stock/service.js`에서 `"0"`/`"0.00"` 하드코딩이었던 `change`/`change_rate`를 최근 2거래일 종가 비교로 계산 (`+1234` / `+1.67`). MajorStocksPage 등락률 뱃지(5-5) 선행 조건.
+  - **신규 파일** `scripts/backfill-history.js` 스켈레톤: 97종목 × N일치 네이버 fchart 배치 적재. `--days/--resume/--limit/--offset` 옵션, `scripts/.backfill-state.json` 체크포인트 (실패 시 `--resume`로 이어받기), 종목 간 1초 딜레이. **실제 실행은 다음 세션** (DATABASE_URL 연결 상태에서).
+  - **UI/UX 7건**:
+    - **5-1** HoldingsAnalysisPage 손절 문구 순화: "손절 기준(-7%)" 같은 특정 숫자 노출은 매도 권유로 해석될 수 있음 → `-7% ≤ rate < -3%` "손실이 나고 있어요. 시장 상황을 지켜봐요", `rate < -7%` "손실이 커지고 있어요. 해당 종목의 분석을 다시 확인해보세요 🔴".
+    - **5-2** DashboardPage Y축/툴팁 `formatKoreanWon()`: `₩35000k` → `₩3500만` / 1억 이상은 `₩3.5억`. 초보자가 모르는 영문 k 단위 제거.
+    - **5-3** RecommendationsPage 빈 상태 3분기: KST 현재 시간으로 "오전 8시 전 — N시간 후 결과" / "오전 8~10시 — 분석 중" / "그 이후 — 오늘 매력 종목 없음". 이전엔 어느 단계인지 구분 안 됐음.
+    - **5-4** ScreenerPage 반응형: `md:hidden` 카드 묶음 / `hidden md:block` 테이블 분리. 모바일 가로 스크롤 제거.
+    - **5-5** MajorStocksPage 등락률 뱃지: 주가 하단에 `▲ +1.2%` / `▼ -0.8%`. `change_rate`가 `"0.00"`/`"+0.00"` placeholder면 숨김.
+    - **5-6** StockDetailView 라인 차트 상단 이평선 안내 2줄 규격으로 확장: "파란선(5일 평균, 단기 흐름) / 노란선(20일 평균, 중기 흐름). 주가 > 파란선 = 단기 상승 흐름 · 파란선 > 노란선 = 정배열(긍정적 추세)."
+    - **5-7** App.tsx 알림 패널 버튼 `py-1.5` → `py-2 min-h-[44px]` (HIG 터치 타겟 충족).
+  - **로드맵 추가**:
+    - **P4-1**: Phase 4 백테스팅 전까지 스코어 카드 상단에 "이 임계값은 실증 검증 전이에요. 참고용으로만 봐주세요." 경고 배너 고정 노출.
+    - **P4-2**: 섹터별 스코어링 가중치 바이오·금융 우선 1차 구현.
+    - **P5-2 보완**: Claude Haiku AI 리포트 원가(월 ~17,460원/97종목)가 구독료 3,900원을 초과 → **① 월 호출 제한 + ② 종목별 일 1회 공용 캐시 하이브리드** 권장.
+    - **P5-3 신설**: JWT refresh 토큰 14일 만료 + `users.refresh_token_hash` 회전 전략. `legacy_device_id` 재사용 방지: UNIQUE 제약 + 최초 로그인 1회만 병합.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건

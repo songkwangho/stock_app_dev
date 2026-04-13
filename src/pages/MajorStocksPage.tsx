@@ -149,7 +149,19 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
                       <span className="text-xs text-slate-500 font-mono">{stock.code}</span>
                     </div>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
+                      <div>
+                        <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
+                        {/* 16차 5-5: 등락률 표시. 서버가 "+0.00" 같은 placeholder를 반환하면 숨김 */}
+                        {stock.change_rate && stock.change_rate !== '0.00' && stock.change_rate !== '+0.00' && (() => {
+                          const rate = parseFloat(stock.change_rate);
+                          const up = rate > 0;
+                          return (
+                            <p className={`text-xs font-bold mt-0.5 ${up ? 'text-emerald-500' : rate < 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                              {up ? '▲' : rate < 0 ? '▼' : ''} {stock.change_rate}%
+                            </p>
+                          );
+                        })()}
+                      </div>
                       <div className="flex items-center space-x-2">
                         <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${stock.market_opinion === '긍정적' ? 'bg-emerald-500/10 text-emerald-500' :
                           stock.market_opinion === '부정적' ? 'bg-red-500/10 text-red-500' : 'bg-slate-500/10 text-slate-400'

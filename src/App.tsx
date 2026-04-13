@@ -404,19 +404,20 @@ const App = () => {
                             <p className="text-xs text-slate-600 mt-1 pl-7">
                               {getDataFreshnessShort(alert.created_at)}
                             </p>
+                            {/* 16차 5-7: 모바일 HIG 44px 터치 타겟 확보 (py-1.5 → min-h-[44px]) */}
                             <div className="flex items-center space-x-2 pl-7 mt-2">
                               <button
                                 onClick={() => {
                                   handleDetailClick({ code: alert.code, name: alert.name, category: '알림' });
                                   setShowAlerts(false);
                                 }}
-                                className="text-xs font-bold px-3 py-1.5 bg-blue-600/80 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                                className="text-xs font-bold px-4 py-2 min-h-[44px] bg-blue-600/80 hover:bg-blue-500 text-white rounded-lg transition-colors"
                               >
                                 지금 확인하기
                               </button>
                               <button
                                 onClick={() => setShowAlerts(false)}
-                                className="text-xs font-bold px-3 py-1.5 text-slate-400 hover:text-white transition-colors"
+                                className="text-xs font-bold px-4 py-2 min-h-[44px] text-slate-400 hover:text-white transition-colors"
                               >
                                 나중에 볼게요
                               </button>

@@ -21,11 +21,12 @@ export async function initSchema(pool) {
         )
     `);
 
+    // avg_price는 NUMERIC(14,2) — 분할 매수 시 평균이 소수점 1~2자리까지 발생할 수 있어 INTEGER 반올림은 손실 (16차 설계-A).
     await pool.query(`
         CREATE TABLE IF NOT EXISTS holding_stocks (
             device_id    TEXT NOT NULL DEFAULT 'default',
             code         TEXT NOT NULL REFERENCES stocks (code) ON DELETE CASCADE,
-            avg_price    INTEGER,
+            avg_price    NUMERIC(14, 2),
             weight       INTEGER,
             quantity     INTEGER DEFAULT 0,
             last_updated TIMESTAMPTZ DEFAULT NOW(),

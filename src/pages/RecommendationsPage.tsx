@@ -138,19 +138,31 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
             <RecommendedStockCard key={stock.code} stock={stock} onDetailClick={onDetailClick} />
           ))}
         </div>
-      ) : (
-        // 빈 추천 목록 — 특히 syncAllStocks가 완료되기 전에는 긍정적 market_opinion이 없어 비어있을 수 있음 (14차 P3-2)
-        <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl px-6">
-          <TrendingUp size={40} className="mx-auto text-slate-700 mb-4" />
-          <p className="text-slate-300 font-bold mb-2">지금 데이터를 분석 중이에요</p>
-          <p className="text-slate-500 text-sm leading-relaxed mb-1">
-            하루 1회(오전 8시) 97종목을 분석해 유망 종목을 선정해요.
-          </p>
-          <p className="text-slate-600 text-xs leading-relaxed">
-            첫 실행 시에는 전체 분석이 끝날 때까지 10~15분 정도 걸릴 수 있어요.
-          </p>
-        </div>
-      )}
+      ) : (() => {
+        // 16차 5-3: 현재 시간(KST) 기준으로 "왜 지금 없는지" 구체적으로 안내.
+        //   오전 8시 이전 → 분석이 아직 시작 안 됨
+        //   오전 8~9시대 → 분석 진행 중
+        //   그 이후 → 오늘 매력 종목이 없는 것일 가능성
+        const nowKst = new Date(Date.now() + (new Date().getTimezoneOffset() + 9 * 60) * 60000);
+        const hour = nowKst.getHours();
+        let headline = '지금 매력적인 종목이 없어요';
+        let body = '오늘 시장 상황에서는 긍정적인 종목이 없어요. 내일 다시 확인해보세요.';
+        if (hour < 8) {
+            const hoursUntil = 8 - hour;
+            headline = '오늘 분석은 오전 8시부터 시작해요';
+            body = `약 ${hoursUntil}시간 후 결과가 나와요.`;
+        } else if (hour < 10) {
+            headline = '지금 데이터를 분석 중이에요';
+            body = '97종목 분석이 끝날 때까지 10~15분 정도 걸려요. 잠시 후 다시 확인해주세요.';
+        }
+        return (
+          <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl px-6">
+            <TrendingUp size={40} className="mx-auto text-slate-700 mb-4" />
+            <p className="text-slate-300 font-bold mb-2">{headline}</p>
+            <p className="text-slate-500 text-sm leading-relaxed">{body}</p>
+          </div>
+        );
+      })()}
 
       {/* 모바일 한정: 전체 종목 보기 */}
       <button

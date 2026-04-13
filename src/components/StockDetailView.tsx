@@ -324,10 +324,18 @@ const StockDetailView = ({ stock, onBack, onAdd, onUpdate }: StockDetailViewProp
                   ))}
                 </div>
               </h3>
+              {/* 16차 5-6: SMA 의미를 한 줄로 더 구체적으로 설명 — 초보자가 "평균선"의 의미와 해석 규칙을 모르는 경우 대비 */}
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 mb-4 text-xs text-blue-300 leading-relaxed">
-                {chartType === 'line'
-                  ? '파란선(5일 평균)과 노란선(20일 평균)을 보세요. 주가가 파란선 위에 있으면 좋은 신호예요.'
-                  : helpTexts.candle}
+                {chartType === 'line' ? (
+                  <>
+                    <p className="font-bold mb-1">💡 이평선(이동평균선) 보는 법</p>
+                    <p>
+                      <span className="text-blue-400 font-bold">파란선</span>(5일 평균, 단기 흐름) /
+                      <span className="text-yellow-400 font-bold"> 노란선</span>(20일 평균, 중기 흐름). <br />
+                      주가 &gt; 파란선 = 단기 상승 흐름 · 파란선 &gt; 노란선 = 정배열(긍정적 추세).
+                    </p>
+                  </>
+                ) : helpTexts.candle}
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">

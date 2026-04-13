@@ -39,13 +39,16 @@ await registerInitialData(pool);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS whitelist (dev + production origins)
+// CORS whitelist (dev + production origins).
+// 배포 시 Vercel URL은 `FRONTEND_URL` 환경변수로 주입 (16차 버그-E).
+// 여러 도메인이 필요하면 콤마로 구분: `FRONTEND_URL=https://a.vercel.app,https://b.vercel.app`
 const ALLOWED_ORIGINS = [
     'http://localhost:5173',  // Vite dev server
     'http://localhost:4173',  // Vite preview
     'http://localhost:3000',  // alternative dev
     'capacitor://localhost',  // Capacitor iOS
     'http://localhost',       // Capacitor Android
+    ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(s => s.trim()).filter(Boolean) : []),
 ];
 app.use(cors({
     origin: (origin, callback) => {

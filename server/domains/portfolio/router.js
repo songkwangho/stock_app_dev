@@ -120,6 +120,7 @@ router.post('/', async (req, res) => {
 
         if (updated) {
             const { sma5, sma20 } = await computeSMA(pool, code);
+            // pg NUMERIC → string. calculateHoldingOpinion 호출 전에 모두 Number() 캐스팅 필수 (버그-3 후속).
             updated.avg_price = updated.avg_price !== null ? Number(updated.avg_price) : null;
             updated.weight = updated.weight !== null ? Number(updated.weight) : null;
             updated.quantity = Number(updated.quantity || 0);
@@ -175,6 +176,7 @@ router.put('/:code', async (req, res) => {
 
         if (updated) {
             const { sma5, sma20 } = await computeSMA(pool, code);
+            // pg NUMERIC → string. calculateHoldingOpinion 호출 전에 모두 Number() 캐스팅 필수 (버그-3 후속).
             updated.avg_price = updated.avg_price !== null ? Number(updated.avg_price) : null;
             updated.weight = updated.weight !== null ? Number(updated.weight) : null;
             updated.quantity = Number(updated.quantity || 0);

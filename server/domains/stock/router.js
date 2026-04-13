@@ -201,8 +201,12 @@ router.get('/recommendations', async (req, res) => {
             results.push(...chunkResults);
         }
 
-        const filteredResults = results.filter(r => r !== null && r.market_opinion === '긍정적').sort((a, b) => b.score - a.score);
-        res.json(filteredResults);
+        // 정렬 분리: manual 추천은 의미 있는 score(78~95)로 우선 정렬, algorithm 추천은 score=50 placeholder라
+        // 정렬 기준이 의미 없음 → market_opinion 점수만 만족하면 manual 뒤에 그대로 추가 (버그-B 후속).
+        const filtered = results.filter(r => r !== null && r.market_opinion === '긍정적');
+        const manualSorted = filtered.filter(r => r.source === 'manual').sort((a, b) => b.score - a.score);
+        const algorithmTail = filtered.filter(r => r.source !== 'manual');
+        res.json([...manualSorted, ...algorithmTail]);
     } catch (error) {
         console.error('Recommendations API Error:', error.message);
         res.status(500).json({ error: 'Failed to fetch recommendations' });

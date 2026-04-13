@@ -3,9 +3,17 @@ import {
   Wallet, TrendingUp, LayoutDashboard, ArrowUpRight, RefreshCw, ArrowRight
 } from 'lucide-react';
 import {
-  AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
+
+// 한국식 금액 단위 포매터 — Y축/툴팁 공용 (16차 5-2).
+// `₩35000k` 같은 영문 k 단위는 초보자가 직관적으로 이해하기 어려움.
+const formatKoreanWon = (value: number): string => {
+  if (value >= 100_000_000) return `₩${(value / 100_000_000).toFixed(1)}억`;
+  if (value >= 10_000) return `₩${Math.round(value / 10_000)}만`;
+  return `₩${value.toLocaleString()}`;
+};
 import StatCard from '../components/StatCard';
 import ErrorBanner from '../components/ErrorBanner';
 import { stockApi } from '../api/stockApi';
@@ -196,7 +204,8 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                 const lineColor = isLoss ? '#ef4444' : '#3b82f6';
                 return (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
+                  {/* AreaChart 안에 Line을 직접 두는 것은 비공식 패턴이라 ComposedChart로 변경 (16차 버그-C) */}
+                  <ComposedChart data={chartData}>
                     <defs>
                       <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={lineColor} stopOpacity={0.3} />
@@ -205,7 +214,7 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                     <XAxis dataKey="date" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₩${(v / 1000).toFixed(0)}k`} />
+                    <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => formatKoreanWon(Number(v))} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
@@ -216,9 +225,9 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
                       formatter={(v) => v === 'value' ? '평가금액 (현재 가치)' : '투자원금 (산 가격 합계)'}
                     />
                     <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                    {/* 투자원금 라인: 평가금액이 이 라인 위면 수익, 아래면 손실 (5-4) */}
+                    {/* 투자원금 라인: 평가금액이 이 라인 위면 수익, 아래면 손실 (15차 5-4) */}
                     <Line type="monotone" dataKey="cost" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  </AreaChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
                 );
               })() : (

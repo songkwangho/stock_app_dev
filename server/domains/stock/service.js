@@ -241,6 +241,18 @@ export async function getStockData(code, fallbackName = null) {
         const latestMatch = allMatches[allMatches.length - 1];
         const latestPrice = parseInt(latestMatch[5]);
 
+        // 16차 5-5: change/change_rate를 "0"으로 저장하던 것을 실제 계산으로 교체.
+        // 최근 2거래일 종가 비교 (allMatches는 오름차순).
+        let changeStr = '0';
+        let changeRateStr = '0.00';
+        if (allMatches.length >= 2) {
+            const prevPrice = parseInt(allMatches[allMatches.length - 2][5]);
+            const diff = latestPrice - prevPrice;
+            const rate = prevPrice > 0 ? (diff / prevPrice) * 100 : 0;
+            changeStr = diff >= 0 ? `+${diff}` : `${diff}`;
+            changeRateStr = `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}`;
+        }
+
         const { rows: historyRows } = await query(
             'SELECT date, price, open, high, low, volume FROM stock_history WHERE code = $1 ORDER BY date DESC LIMIT 40',
             [code]
@@ -299,7 +311,7 @@ export async function getStockData(code, fallbackName = null) {
                 eps_current = EXCLUDED.eps_current,
                 eps_previous = EXCLUDED.eps_previous,
                 last_updated = NOW()
-        `, [code, nameToSave, latestPrice, "0", "0.00", per, pbr, roe, targetPrice, categoryToSave, epsCurrent, epsPrevious]);
+        `, [code, nameToSave, latestPrice, changeStr, changeRateStr, per, pbr, roe, targetPrice, categoryToSave, epsCurrent, epsPrevious]);
 
         // Advanced Analysis Generation Logic
         const historyRev = [...history].reverse();
@@ -395,8 +407,8 @@ export async function getStockData(code, fallbackName = null) {
             code,
             name: nameToSave,
             price: latestPrice,
-            change: "0",
-            change_rate: "0.00",
+            change: changeStr,
+            change_rate: changeRateStr,
             per, pbr, roe, targetPrice,
             category: categoryToSave,
             history: historyRev,

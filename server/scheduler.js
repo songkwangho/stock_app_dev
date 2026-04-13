@@ -1,9 +1,27 @@
 // Scheduler: syncAllStocks delayed startup + daily 8AM + cleanup
 import { syncAllStocks, scheduleDaily8AM } from './domains/stock/service.js';
 
+// Neon 무료 플랜 sleep 해제(1~3초)와 connectionTimeoutMillis(5초)가 겹치면 첫 sync가 조용히 실패할 수 있다.
+// 다음 동기화는 다음 날 08:00이라 하루치 데이터를 잃게 됨 → 5초 후 1차 시도, 실패 시 30초 후 1회 backoff (16차 버그-D).
+async function initialSyncWithRetry() {
+    try {
+        await syncAllStocks();
+    } catch (e1) {
+        console.error('Initial sync failed, retrying in 30s:', e1.message);
+        setTimeout(async () => {
+            try {
+                await syncAllStocks();
+            } catch (e2) {
+                console.error('Initial sync retry also failed:', e2.message);
+                // 더 이상 재시도하지 않음 — 다음 08:00 스케줄에 의존
+            }
+        }, 30000);
+    }
+}
+
 export function setupScheduler() {
     // Delay initial sync by 5 seconds to avoid blocking server startup
-    setTimeout(() => syncAllStocks(), 5000);
+    setTimeout(() => initialSyncWithRetry(), 5000);
 
     // Schedule daily 8AM sync
     scheduleDaily8AM();

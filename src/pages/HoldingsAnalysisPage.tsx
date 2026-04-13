@@ -381,12 +381,13 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                     parseFloat(profitRate) >= -7 ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
+                    {/* 16차 5-1: 손절 기준(-7%)을 직접 노출하면 매도 권유로 오해될 수 있어 문구 순화 */}
                     {parseFloat(profitRate) >= 20 ? '목표 수익 달성! 🎉' :
                      parseFloat(profitRate) >= 10 ? '잘 하고 계세요! 추세를 유지해 보세요' :
                      parseFloat(profitRate) >= 0 ? '소폭 수익 중이에요. 지켜보세요' :
                      parseFloat(profitRate) >= -3 ? '소폭 손실이에요. 주식은 단기 등락이 있어요. 조금 더 지켜볼까요?' :
-                     parseFloat(profitRate) >= -7 ? '손실이 커지고 있어요. 손절 기준(-7%)에 근접했어요' :
-                     '손실이 커지고 있어요 🔴'}
+                     parseFloat(profitRate) >= -7 ? '손실이 나고 있어요. 시장 상황을 지켜봐요' :
+                     '손실이 커지고 있어요. 해당 종목의 분석을 다시 확인해보세요 🔴'}
                   </p>
                   {parseFloat(profitRate) >= 20 && (
                     <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">일부 팔아볼까요? [종목 보기 →]</button>

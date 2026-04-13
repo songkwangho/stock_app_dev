@@ -21,7 +21,20 @@ npm run dev                                        # 프론트엔드 (localhost:
 DATABASE_URL=postgres://... node server/server.js  # 백엔드 (localhost:3001)
 ```
 
-> `DATABASE_URL` 환경변수 필수. Neon 무료 플랜 권장. 서버 기동 시 스키마 자동 생성 + 시드 데이터 등록 + 5초 후 첫 `syncAllStocks` 실행.
+> `DATABASE_URL` 환경변수 필수. Neon 무료 플랜 권장. 서버 기동 시 스키마 자동 생성 + 시드 데이터 등록 + 5초 후 첫 `syncAllStocks` 실행 (실패 시 30초 backoff 1회 재시도).
+
+### 배포 환경변수 (Render)
+| 이름 | 용도 |
+|------|------|
+| `DATABASE_URL` | Neon PostgreSQL connection string (필수) |
+| `FRONTEND_URL` | Vercel 프론트엔드 URL. 콤마로 다중 도메인 가능 — CORS `ALLOWED_ORIGINS`에 자동 포함 |
+| `NODE_ENV=production` | pg `ssl: { rejectUnauthorized: false }` 활성화 |
+
+### 장기 데이터 적재 (Phase 4 선행)
+```bash
+DATABASE_URL=postgres://... node scripts/backfill-history.js --days 1095  # 97종목 × 3년
+node scripts/backfill-history.js --resume                                  # 실패 후 이어받기
+```
 
 ## 문서
 
