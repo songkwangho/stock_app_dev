@@ -407,35 +407,42 @@ const HoldingsAnalysisPage = ({ holdings, onAdd, onUpdate, onDelete, onDetailCli
                       <span className="font-normal text-slate-500 ml-1">이평선 데이터를 수집 중이에요. 잠시 후 다시 확인해보세요.</span>
                     </div>
                   ) : stock.holding_opinion && (() => {
+                    // 17차 5-2: 모바일 가독성을 위해 뱃지(상태)와 이유 텍스트를 별도 블록으로 분리.
                     // 표시 라벨은 명령어("매도")가 아닌 상태 설명("주의 필요")으로 변환.
-                    // 내부 holding_opinion 값은 알고리즘과 호환성을 위해 그대로 둔다.
                     const displayLabel =
                       stock.holding_opinion === '매도' ? '주의 필요' :
                       stock.holding_opinion === '추가매수' ? '추가 검토' :
                       stock.holding_opinion;
                     const cautionLike = stock.holding_opinion === '매도' || stock.holding_opinion === '추가매수';
+                    const lossRate = (stock.avgPrice && stock.currentPrice)
+                      ? ((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100)
+                      : null;
+                    const reason =
+                      stock.holding_opinion === '매도' && lossRate !== null
+                        ? lossRate <= -7
+                          ? '손실이 커지고 있어요. 해당 종목의 분석을 다시 확인해보세요 🔴'
+                          : '5일·20일 평균 모두 아래로 내려갔어요. 하락 추세예요.'
+                        : stock.holding_opinion === '관망' ? '5일 평균 아래지만 20일 평균이 지지 중이에요. 조금 기다려봐요.'
+                        : stock.holding_opinion === '추가매수' ? '5일 평균 부근에서 지지받고 있어요.'
+                        : '5일 평균 위, 이평선 정배열이에요. 상승 흐름이 이어지고 있어요.';
                     return (
-                    <div className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
-                      stock.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                      stock.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                      stock.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                      'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                    }`}>
-                      {displayLabel}
-                      <span className="font-normal text-slate-500 ml-1">
-                        {stock.holding_opinion === '매도' && stock.avgPrice && stock.currentPrice
-                          ? ((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100) <= -7
-                            ? `평단가 대비 ${((stock.currentPrice - stock.avgPrice) / stock.avgPrice * 100).toFixed(1)}% 손실이에요. 손절 기준(-7%)을 넘었어요.`
-                            : '5일·20일 평균 모두 아래로 내려갔어요. 하락 추세예요.'
-                          : stock.holding_opinion === '관망' ? '5일 평균 아래지만 20일 평균이 지지 중이에요. 조금 기다려봐요.'
-                          : stock.holding_opinion === '추가매수' ? '5일 평균 부근에서 지지받고 있어요.'
-                          : '5일 평균 위, 이평선 정배열이에요. 상승 흐름이 이어지고 있어요.'}
-                      </span>
-                      <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline ml-1">상세 보기 →</button>
-                      {cautionLike && (
-                        <span className="block mt-1 font-normal text-[11px] text-slate-500 italic">
-                          이 신호는 참고용이에요. 판단은 본인이 해주세요. 실제 거래는 증권사 앱에서 직접 진행해 주세요.
+                    <div className="w-full">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
+                          stock.holding_opinion === '매도' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                          stock.holding_opinion === '관망' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                          stock.holding_opinion === '추가매수' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                          'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        }`}>
+                          [{displayLabel}]
                         </span>
+                        <button onClick={() => onDetailClick({ ...stock, category: '보유 종목' })} className="text-xs text-blue-400 hover:underline">상세 보기 →</button>
+                      </div>
+                      <p className="mt-1.5 text-xs font-normal text-slate-400 leading-relaxed">{reason}</p>
+                      {cautionLike && (
+                        <p className="mt-1 text-[11px] text-slate-500 italic leading-relaxed">
+                          이 신호는 참고용이에요. 판단은 본인이 해주세요. 실제 거래는 증권사 앱에서 직접 진행해 주세요.
+                        </p>
                       )}
                     </div>
                     );

@@ -79,6 +79,8 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
       <div>
         <h2 className="text-2xl font-bold mb-2">주요 종목 현황</h2>
         <p className="text-slate-500 text-sm">업종별 주요 종목의 실시간 시세와 추세를 한눈에 확인하세요.</p>
+        {/* 17차 5-3: ▲/▼ 등락률 기준 명시 — 초보자는 기간 기준을 모름 */}
+        <p className="text-slate-600 text-xs mt-2">※ ▲/▼ 등락률은 <span className="text-slate-400 font-bold">전일 종가 대비</span> 변동분이에요.</p>
       </div>
 
       <ErrorBanner error={error} kind="server" onRetry={fetchStocks} />
@@ -151,8 +153,8 @@ const MajorStocksPage = ({ onDetailClick }: MajorStocksPageProps) => {
                     <div className="flex items-center justify-between mt-2">
                       <div>
                         <p className="text-lg font-black">{stock.price?.toLocaleString()}원</p>
-                        {/* 16차 5-5: 등락률 표시. 서버가 "+0.00" 같은 placeholder를 반환하면 숨김 */}
-                        {stock.change_rate && stock.change_rate !== '0.00' && stock.change_rate !== '+0.00' && (() => {
+                        {/* 16차 5-5 / 17차 버그-5: 등락률 placeholder 방어 ("0", "-0.00" 엣지 포함) */}
+                        {stock.change_rate && !['0', '0.00', '+0.00', '-0.00'].includes(stock.change_rate) && (() => {
                           const rate = parseFloat(stock.change_rate);
                           const up = rate > 0;
                           return (

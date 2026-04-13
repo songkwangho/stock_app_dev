@@ -71,7 +71,14 @@ const ScoringBreakdownPanel = ({ breakdown }: ScoringBreakdownPanelProps) => {
           }`}>{scoreLabel}</span>
         </div>
       </div>
-      <p className="text-xs text-slate-500 mb-4 leading-relaxed">10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요.</p>
+      <p className="text-xs text-slate-500 mb-3 leading-relaxed">10점에 가까울수록 긍정적인 신호예요. 높은 점수가 수익을 보장하지는 않아요.</p>
+
+      {/* 17차 P4-보완: 7/4점 임계값은 백테스팅 검증 전 임시값 — 사용자에게 고지 (CLAUDE.md Phase 4-1) */}
+      <div className="mb-4 p-2.5 bg-amber-500/5 border border-amber-500/30 rounded-lg">
+        <p className="text-[11px] text-amber-300/90 leading-relaxed">
+          ⚠️ <span className="font-bold">이 점수 기준은 실증 검증 전이에요.</span> 과거 데이터로 최적화하기 전 임시 기준이니 참고용으로만 봐주세요.
+        </p>
+      </div>
 
       {/* Score Bars */}
       <div className="space-y-3">

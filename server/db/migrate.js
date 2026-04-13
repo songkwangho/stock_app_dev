@@ -23,6 +23,23 @@ export async function runMigrations(pool) {
         }
     }
 
+    // 17차 설계-A: 기존 DB에 holding_stocks.avg_price가 INTEGER로 남아있는 경우 NUMERIC(14,2)로 승격.
+    // CREATE TABLE IF NOT EXISTS는 멱등이라 컬럼 타입을 바꾸지 못하므로 ALTER로 보정.
+    // 신규 DB는 schema.js가 이미 NUMERIC으로 생성해 이 쿼리는 no-op.
+    try {
+        const { rows } = await pool.query(
+            `SELECT data_type, numeric_precision, numeric_scale
+             FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'holding_stocks' AND column_name = 'avg_price'`
+        );
+        if (rows.length > 0 && rows[0].data_type !== 'numeric') {
+            console.log('[migrate] Altering holding_stocks.avg_price → NUMERIC(14,2)');
+            await pool.query('ALTER TABLE holding_stocks ALTER COLUMN avg_price TYPE NUMERIC(14, 2)');
+        }
+    } catch (e) {
+        console.warn('[migrate] avg_price type check failed:', e.message);
+    }
+
     console.log('PostgreSQL migration checks complete.');
 }
 

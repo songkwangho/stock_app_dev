@@ -93,6 +93,21 @@
     - **P4-2**: 섹터별 스코어링 가중치 바이오·금융 우선 1차 구현.
     - **P5-2 보완**: Claude Haiku AI 리포트 원가(월 ~17,460원/97종목)가 구독료 3,900원을 초과 → **① 월 호출 제한 + ② 종목별 일 1회 공용 캐시 하이브리드** 권장.
     - **P5-3 신설**: JWT refresh 토큰 14일 만료 + `users.refresh_token_hash` 회전 전략. `legacy_device_id` 재사용 방지: UNIQUE 제약 + 최초 로그인 1회만 병합.
+- **17차 (배포 직전 마무리 + UI/UX 6건 + P4 면책 배너)**:
+  - **서버 버그**:
+    - **버그-2** `stock/service.js` INSERT ... ON CONFLICT UPDATE 절에 `change`/`change_rate` 누락 → 16차에서 실제 계산을 추가했지만 UPDATE 절 누락으로 **기존 종목은 여전히 placeholder 유지**되던 문제. UPDATE 절에 두 컬럼 추가.
+    - **설계-1** `migrate.js`에 `holding_stocks.avg_price` INTEGER→NUMERIC(14,2) 자동 ALTER. `information_schema.columns.data_type`으로 감지 후 교체. `CREATE TABLE IF NOT EXISTS`는 멱등이라 기존 DB에는 16차 설계-A가 소급되지 않던 사각지대 해소.
+  - **프런트 버그**:
+    - **버그-3** `RecommendationsPage` KST hour 계산: `Date.now() + (getTimezoneOffset() + 9*60) * 60000` 방식은 `getTimezoneOffset()`이 UTC 대비 음수 부호라 UTC 환경(Render)에서만 우연히 맞고 다른 시간대에서 어긋남 → `Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', hour12: false })`로 교체.
+    - **버그-1** `DashboardPage` `formatKoreanWon` 선언 위치가 import 블록 사이 → 모든 import 이후로 이동 (import/first 규칙).
+    - **버그-5** `MajorStocksPage` 등락률 placeholder 체크에 `'0'`/`'-0.00'` 추가 (부동소수점 `-0` 엣지케이스 방어). `['0', '0.00', '+0.00', '-0.00'].includes()` 집합 판정.
+  - **UI/UX 6건 + 면책**:
+    - **P4-보완** `ScoringBreakdownPanel` 상단에 amber 경고 배너 고정: "⚠️ 이 점수 기준은 실증 검증 전이에요. 과거 데이터로 최적화하기 전 임시 기준이니 참고용으로만 봐주세요." — Phase 4 백테스팅 전까지 스코어 카드에 불확실성 고지. 앱스토어 심사 리스크 완화.
+    - **5-1** `DashboardPage` 차트 상단에 "💡 평가금액(실선)이 투자원금(파선) 위에 있으면 수익 중, 아래면 손실 중" 한 줄 힌트. Legend만으로는 두 라인의 해석법이 초보자에게 불명확.
+    - **5-2** `HoldingsAnalysisPage` holding_opinion 뱃지와 이유 텍스트를 줄 분리 — 뱃지는 `[주의 필요]` 대괄호 라벨, 이유는 아래 `<p>` 줄. 이전 인라인 방식은 모바일 줄바꿈이 지저분했음.
+    - **5-3** `MajorStocksPage` 상단에 "※ ▲/▼ 등락률은 전일 종가 대비 변동분이에요." 기준 안내.
+    - **5-4** `RecommendedStockCard` manual 점수 뱃지에 `?` 기호 + `title` 툴팁 "편집팀이 매긴 종목 추천 점수예요. 100점 만점으로, 높을수록 매력적이라고 판단한 종목이에요." — 92가 무엇 기준인지 불명확하던 문제.
+    - **5-5** `ScreenerPage` 모바일 카드 PER/PBR/ROE 레이블에 `(낮을수록↓)`/`(1이하↓)`/`(높을수록↑)` 힌트 — PC 테이블에만 있던 정보를 모바일에도 동일 노출.
 - 10점 통합 스코어링 (밸류에이션/기술지표/수급/추세)
 - 수급: 가중 감쇠(decay=0.8), HoldingOpinion: SMA null 분기 명시화, `sma_available`(SMA5 5일 이상 가능 여부) API 응답 노출
 - 알림: type별 쿨다운(48h/24h/12h), sell_signal은 이중 이탈 조건

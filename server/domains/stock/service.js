@@ -303,6 +303,8 @@ export async function getStockData(code, fallbackName = null) {
             ON CONFLICT(code) DO UPDATE SET
                 price = EXCLUDED.price,
                 name = EXCLUDED.name,
+                change = EXCLUDED.change,
+                change_rate = EXCLUDED.change_rate,
                 per = EXCLUDED.per,
                 pbr = EXCLUDED.pbr,
                 roe = EXCLUDED.roe,

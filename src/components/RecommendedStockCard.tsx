@@ -27,9 +27,13 @@ const RecommendedStockCard = ({ stock, onDetailClick }: RecommendedStockCardProp
           <p className="text-xs text-slate-500 font-mono mt-0.5">{stock.code}</p>
         </div>
         {stock.source === 'manual' && stock.score > 0 && (
-          <div className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ml-3" title="전문가 선정 점수">
+          <div
+            className="flex items-center space-x-1 bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ml-3 cursor-help"
+            title="편집팀이 매긴 종목 추천 점수예요. 100점 만점으로, 높을수록 매력적이라고 판단한 종목이에요. (17차 5-4)"
+          >
             <Zap size={11} />
             <span>{stock.score}</span>
+            <span className="text-[10px] text-blue-300/70 ml-0.5">?</span>
           </div>
         )}
       </div>

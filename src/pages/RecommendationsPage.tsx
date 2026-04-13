@@ -143,8 +143,13 @@ const RecommendationsPage = ({ onDetailClick }: RecommendationsPageProps) => {
         //   오전 8시 이전 → 분석이 아직 시작 안 됨
         //   오전 8~9시대 → 분석 진행 중
         //   그 이후 → 오늘 매력 종목이 없는 것일 가능성
-        const nowKst = new Date(Date.now() + (new Date().getTimezoneOffset() + 9 * 60) * 60000);
-        const hour = nowKst.getHours();
+        // 17차 버그-3: 기존 `Date.now() + (getTimezoneOffset() + 9 * 60) * 60000`는
+        // getTimezoneOffset()이 UTC 기준 음수 오프셋(KST는 -540)을 반환하므로 UTC 환경(Render)에서만 우연히 맞고
+        // 다른 시간대의 클라이언트에서는 hour가 어긋남. Intl API로 Asia/Seoul hour를 직접 산출.
+        const hour = parseInt(
+            new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', hour12: false }).format(new Date()),
+            10
+        );
         let headline = '지금 매력적인 종목이 없어요';
         let body = '오늘 시장 상황에서는 긍정적인 종목이 없어요. 내일 다시 확인해보세요.';
         if (hour < 8) {

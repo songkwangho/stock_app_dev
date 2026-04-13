@@ -252,20 +252,21 @@ const ScreenerPage = ({ onDetailClick }: ScreenerPageProps) => {
                 </div>
                 <p className="text-lg font-black mb-2">₩{stock.price?.toLocaleString()}</p>
                 <div className="grid grid-cols-3 gap-2 text-xs">
+                  {/* 17차 5-5: 모바일 카드에도 PC 테이블과 동일한 해석 힌트 노출 — 모바일이 오히려 초보자 비중이 높음 */}
                   <div>
-                    <p className="text-slate-600">PER</p>
+                    <p className="text-slate-600">PER <span className="text-slate-700">(낮을수록↓)</span></p>
                     <p className={stock.per && stock.per < 15 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
                       {stock.per ? `${stock.per}배` : '---'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-slate-600">PBR</p>
+                    <p className="text-slate-600">PBR <span className="text-slate-700">(1이하↓)</span></p>
                     <p className={stock.pbr && stock.pbr <= 1 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
                       {stock.pbr ? `${stock.pbr}배` : '---'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-slate-600">ROE</p>
+                    <p className="text-slate-600">ROE <span className="text-slate-700">(높을수록↑)</span></p>
                     <p className={stock.roe && stock.roe >= 15 ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
                       {stock.roe ? `${stock.roe}%` : '---'}
                     </p>

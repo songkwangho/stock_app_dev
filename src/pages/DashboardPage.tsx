@@ -6,6 +6,11 @@ import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
+import StatCard from '../components/StatCard';
+import ErrorBanner from '../components/ErrorBanner';
+import { stockApi } from '../api/stockApi';
+import { getDataFreshnessShort } from '../utils/dataFreshness';
+import type { Holding, StockSummary } from '../types/stock';
 
 // 한국식 금액 단위 포매터 — Y축/툴팁 공용 (16차 5-2).
 // `₩35000k` 같은 영문 k 단위는 초보자가 직관적으로 이해하기 어려움.
@@ -14,11 +19,6 @@ const formatKoreanWon = (value: number): string => {
   if (value >= 10_000) return `₩${Math.round(value / 10_000)}만`;
   return `₩${value.toLocaleString()}`;
 };
-import StatCard from '../components/StatCard';
-import ErrorBanner from '../components/ErrorBanner';
-import { stockApi } from '../api/stockApi';
-import { getDataFreshnessShort } from '../utils/dataFreshness';
-import type { Holding, StockSummary } from '../types/stock';
 
 interface PortfolioHistoryEntry {
   date: string;
@@ -176,9 +176,13 @@ const DashboardPage = ({ holdings, onNavigate, onDetailClick, marketIndices = []
             </div>
             {/* 첫 / 마지막 데이터 포인트의 절대 날짜 표시 — 초보자가 차트 X축 범위를 즉시 파악할 수 있도록 */}
             {chartData.length > 1 && (
-              <p className="text-xs text-slate-600 mb-3">
+              <p className="text-xs text-slate-600 mb-1">
                 {chartData[0].fullDate} ~ {chartData[chartData.length - 1].fullDate}
               </p>
+            )}
+            {/* 17차 5-1: 실선/파선 관계 해석 힌트 — 초보자는 수익/손실 시각적 판독법을 모름 */}
+            {holdings.length > 0 && chartData.length > 0 && (
+              <p className="text-xs text-slate-500 mb-3">💡 평가금액(실선)이 투자원금(파선) <span className="text-emerald-400 font-bold">위</span>에 있으면 수익 중, <span className="text-red-400 font-bold">아래</span>면 손실 중이에요.</p>
             )}
             <div className="h-80 w-full">
               {historyLoading ? (

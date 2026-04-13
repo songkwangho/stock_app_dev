@@ -47,7 +47,8 @@
       "Bash(node --check server/domains/stock/data.js)",
       "Bash(node --check server/scheduler.js)",
       "Bash(node --check server/db/migrate.js)",
-      "Bash(node --check scripts/backfill-history.js)"
+      "Bash(node --check scripts/backfill-history.js)",
+      "Bash(ls -la c:/Users/aistudio/Documents/stock_app_dev/docs/ c:/Users/aistudio/Documents/stock_app_dev/*.md)"
     ],
     "additionalDirectories": [
       "C:\\Users\\aistudio\\Documents\\stock_app_dev\\src"
